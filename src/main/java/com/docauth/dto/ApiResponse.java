@@ -4,13 +4,11 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 public class ApiResponse<T> {
-    private String date;
     private String message;
     private int status;
     private T data;
 
     private ApiResponse(int status, String message, T data) {
-        this.date = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         this.message = message;
         this.status = status;
         this.data = data;
@@ -33,13 +31,7 @@ public class ApiResponse<T> {
     }
 
     // Getters and Setters
-    public String getDate() {
-        return date;
-    }
 
-    public void setDate(String date) {
-        this.date = date;
-    }
 
     public String getMessage() {
         return message;

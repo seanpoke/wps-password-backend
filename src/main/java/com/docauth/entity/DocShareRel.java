@@ -14,15 +14,15 @@ public class DocShareRel {
     
     @Column(name = "uid", nullable = false, length = 64)
     private String uid;
+
+    @Column(name = "type", nullable = false)
+    private Integer type;
     
-    @Column(name = "rel_type", nullable = false)
-    private Integer relType;
+    @Column(name = "name", nullable = false, length = 64)
+    private String name;
     
-    @Column(name = "value", nullable = false, length = 64)
-    private String value;
-    
-    @Column(name = "full_path", nullable = false, length = 255)
-    private String fullPath;
+    @Column(name = "dn", nullable = false, length = 255)
+    private String dn;
     
     @Column(name = "create_time", nullable = false, updatable = false)
     @Temporal(TemporalType.TIMESTAMP)

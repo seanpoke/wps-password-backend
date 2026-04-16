@@ -21,8 +21,11 @@ public class DocInfo {
     @Column(name = "private_key", nullable = false, columnDefinition = "text")
     private String privateKey;
     
-    @Column(name = "owner", nullable = false, length = 64)
-    private String owner;
+    @Column(name = "account", nullable = false, length = 64)
+    private String account;
+
+    @Column(name = "name", nullable = false, length = 64)
+    private String name;
     
     @Column(name = "create_time", nullable = false, updatable = false)
     @Temporal(TemporalType.TIMESTAMP)
