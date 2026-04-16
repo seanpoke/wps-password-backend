@@ -6,5 +6,5 @@ import java.util.List;
 
 public interface DocShareRelRepository extends JpaRepository<DocShareRel, Long> {
     List<DocShareRel> findByUid(String uid);
-    DocShareRel findByUidAndRelTypeAndValue(String uid, Integer relType, String value);
+    DocShareRel findByUidAndTypeAndName(String uid, Integer type, String name);
 }

@@ -1,5 +1,7 @@
 package com.docauth.interceptor;
 
+import com.docauth.context.UserContext;
+import com.docauth.context.UserContextHolder;
 import com.docauth.util.RedisUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -17,11 +19,6 @@ public class TokenInterceptor implements HandlerInterceptor {
     
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        // 跳过登录接口
-        if (request.getRequestURI().equals("/account/login")) {
-            return true;
-        }
-        
         // 从请求头获取token
         String token = request.getHeader("token");
         if (token == null || token.isEmpty()) {
@@ -30,9 +27,9 @@ public class TokenInterceptor implements HandlerInterceptor {
             return false;
         }
         
-        // 校验token是否存在
-        String account = redisUtil.get(token);
-        if (account == null) {
+        // 从Redis中获取用户对象
+        UserContext userContext = redisUtil.getObject(token, UserContext.class);
+        if (userContext == null) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.getWriter().write("未授权：token无效或已过期");
             return false;
@@ -41,9 +38,15 @@ public class TokenInterceptor implements HandlerInterceptor {
         // 刷新token过期时间（72小时）
         redisUtil.expire(token, 72, TimeUnit.HOURS);
         
-        // 将account存储到请求中，供后续接口使用
-        request.setAttribute("account", account);
+        // 将用户上下文存储到ThreadLocal
+        UserContextHolder.setUserContext(userContext);
         
         return true;
+    }
+    
+    @Override
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) throws Exception {
+        // 请求完成后清除ThreadLocal，防止内存泄漏
+        UserContextHolder.clear();
     }
 }

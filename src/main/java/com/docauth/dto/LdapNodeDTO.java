@@ -43,4 +43,9 @@ public class LdapNodeDTO {
      * 子员工列表 (仅部门节点有值)
      */
     private List<LdapNodeDTO> employList;
+    
+    /**
+     * 是否有权限
+     */
+    private Boolean hasAuth;
 }

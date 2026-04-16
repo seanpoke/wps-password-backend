@@ -9,7 +9,7 @@ import java.util.Base64;
 public class RsaUtil {
     
     private static final String ALGORITHM = "RSA";
-    private static final int KEY_SIZE = 2048;
+    private static final int KEY_SIZE = 1024; // 使用1024位，密文长度约172字符
     
     /**
      * 生成RSA公私钥对
@@ -50,6 +50,29 @@ public class RsaUtil {
         
         byte[] decryptedBytes = cipher.doFinal(encryptedBytes);
         return new String(decryptedBytes);
+    }
+
+    public static void main(String[] args) throws Exception {
+        
+            String[] keyPair = RsaUtil.generateKeyPair();
+            String publicKey = keyPair[0];
+            String privateKey = keyPair[1];
+
+            String data = "xsn123";
+            String encryptedData = RsaUtil.encrypt(data, publicKey);
+            String decryptedData = RsaUtil.decrypt(encryptedData, privateKey);
+
+            System.out.println("公钥：" + publicKey);
+            System.out.println("私钥：" + privateKey);
+            System.out.println("原始数据：" + data);
+            System.out.println("原始数据长度：" + data.length());
+            System.out.println("加密数据：" + encryptedData);
+            System.out.println("加密数据长度：" + encryptedData.length());
+            System.out.println("解密数据：" + decryptedData);
+            System.out.println("解密是否成功：" + data.equals(decryptedData));
+            System.out.println("公钥长度：" + publicKey.length());
+            System.out.println("私钥长度：" + privateKey.length());
+
     }
     
     /**
