@@ -6,10 +6,12 @@ D:\develop\aiCode\trae\wps-password-backend\src\main\java\com\docauth\dto\DocOwn
 D:\develop\aiCode\trae\wps-password-backend\src\main\java\com\docauth\controller\DocController.java
 D:\develop\aiCode\trae\wps-password-backend\src\main\java\com\docauth\dto\SaveLogRequest.java
 D:\develop\aiCode\trae\wps-password-backend\src\main\java\com\docauth\entity\DocPasswordLog.java
+D:\develop\aiCode\trae\wps-password-backend\src\main\java\com\docauth\service\DocService.java
 D:\develop\aiCode\trae\wps-password-backend\src\main\java\com\docauth\context\UserContextHolder.java
 D:\develop\aiCode\trae\wps-password-backend\src\main\java\com\docauth\util\UserUtil.java
 D:\develop\aiCode\trae\wps-password-backend\src\main\java\com\docauth\entity\DocConfig.java
 D:\develop\aiCode\trae\wps-password-backend\src\main\java\com\docauth\dto\LoginRequest.java
+D:\develop\aiCode\trae\wps-password-backend\src\main\java\com\docauth\service\AccountService.java
 D:\develop\aiCode\trae\wps-password-backend\src\main\java\com\docauth\interceptor\TokenInterceptor.java
 D:\develop\aiCode\trae\wps-password-backend\src\main\java\com\docauth\config\WebMvcConfig.java
 D:\develop\aiCode\trae\wps-password-backend\src\main\java\com\docauth\repository\DocOperateLogRepository.java
