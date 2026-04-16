@@ -14,6 +14,7 @@ com\docauth\controller\ConfigController.class
 com\docauth\context\UserContextHolder.class
 com\docauth\DocAuthApplication.class
 com\docauth\repository\DocShareRelRepository.class
+com\docauth\service\AccountService.class
 com\docauth\service\LdapService.class
 com\docauth\config\SwaggerConfig.class
 com\docauth\interceptor\TokenInterceptor.class
@@ -28,6 +29,7 @@ com\docauth\dto\SaveLogRequest.class
 com\docauth\dto\DocInfoResponse.class
 com\docauth\repository\DocOperateLogRepository.class
 com\docauth\entity\DocShareRel.class
+com\docauth\service\DocService.class
 com\docauth\entity\DocInfo.class
 com\docauth\service\LdapService$LdapTreeNode.class
 com\docauth\entity\DocPasswordLog.class
