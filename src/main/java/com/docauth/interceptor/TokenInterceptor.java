@@ -2,7 +2,9 @@ package com.docauth.interceptor;
 
 import com.docauth.context.UserContext;
 import com.docauth.context.UserContextHolder;
+import com.docauth.dto.ApiResponse;
 import com.docauth.util.RedisUtil;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,13 +19,18 @@ public class TokenInterceptor implements HandlerInterceptor {
     @Autowired
     private RedisUtil redisUtil;
     
+    @Autowired
+    private ObjectMapper objectMapper;
+    
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         // 从请求头获取token
         String token = request.getHeader("token");
         if (token == null || token.isEmpty()) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            response.getWriter().write("未授权：缺少token");
+            response.setContentType("application/json;charset=UTF-8");
+            String jsonResponse = objectMapper.writeValueAsString(ApiResponse.error(401, "token invalid"));
+            response.getWriter().write(jsonResponse);
             return false;
         }
         
@@ -31,7 +38,9 @@ public class TokenInterceptor implements HandlerInterceptor {
         UserContext userContext = redisUtil.getObject(token, UserContext.class);
         if (userContext == null) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            response.getWriter().write("未授权：token无效或已过期");
+            response.setContentType("application/json;charset=UTF-8");
+            String jsonResponse = objectMapper.writeValueAsString(ApiResponse.error(401, "token invalid"));
+            response.getWriter().write(jsonResponse);
             return false;
         }
         
