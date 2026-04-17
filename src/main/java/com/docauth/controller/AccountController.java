@@ -74,4 +74,19 @@ public class AccountController {
             return ApiResponse.error(500, "token刷新失败：系统异常");
         }
     }
+
+    @PostMapping("/account/logout")
+    @Operation(summary = "用户登出", description = "用户登出")
+    public ApiResponse<?> logout(@RequestHeader("token") String token) {
+        log.info("[logout] 接收到登出请求");
+
+        try {
+            // 调用Service处理登出业务逻辑（删除Redis中的token）
+            accountService.logout(token);
+            return ApiResponse.success("登出成功");
+        } catch (Exception e) {
+            log.error("[logout] 登出异常: {}", e.getMessage(), e);
+            return ApiResponse.error(500, "登出失败：系统异常");
+        }
+    }
 }

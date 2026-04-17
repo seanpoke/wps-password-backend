@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  # --- 1. 你的 Spring Boot 应用 ---
+  wps-app:
+    image: ghcr.io/seanpoke/wps-password-backend:master
+    container_name: wps_app_container
+    restart: always
+    # 设置端口映射 (假设你的 Spring Boot 运行在 8080 端口)
+    ports:
+      - "8080:8080"
+    # 依赖数据库和 Redis，确保它们先启动
+    depends_on:
+      - mysql8
+      - redis
+    # 设置环境变量 (Spring Boot 读取这些变量来连接数据库和 Redis)
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      # 方式1：通过环境变量覆盖配置（优先级最高）
+      - BUSI_OUTER_IP=mysql8
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql8:3306/mydb?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
+      - SPRING_DATASOURCE_USERNAME=testuser
+      - SPRING_DATASOURCE_PASSWORD=test123456
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_PASSWORD=sean1234
+      # 如果你的应用需要其他自定义变量，也在这里添加
+    # 挂载外部配置文件（可选）
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    networks:
+      - wps_network
+
+  # --- 2. 原有的 MySQL ---
+  mysql8:
+    image: mysql:8.0
+    container_name: mysql8_container
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root123456
+      MYSQL_DATABASE: mydb
+      MYSQL_USER: testuser
+      MYSQL_PASSWORD: test123456
+      TZ: Asia/Shanghai
+      MYSQL_CHARACTER_SET_SERVER: utf8mb4
+      MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
+    ports:
+      - "3316:3306"
+    volumes:
+      - mysql8_data:/var/lib/mysql
+      - ./mysql/conf:/etc/mysql/conf.d
+      - ./mysql/init:/docker-entrypoint-initdb.d
+    networks:
+      - wps_network
+    command:
+      --default-authentication-plugin=mysql_native_password
+      --sql-mode="STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION"
+
+  # --- 3. 原有的 Redis ---
+  redis:
+    image: redis:7.2
+    container_name: redis_container
+    restart: always
+    environment:
+      TZ: Asia/Shanghai
+      REDIS_PASSWORD: sean1234
+    ports:
+      - "6479:6379"
+    volumes:
+      - redis_data:/data
+      - ./redis/conf/redis.conf:/etc/redis/redis.conf
+    networks:
+      - wps_network
+    command: redis-server /etc/redis/redis.conf
+
+volumes:
+  mysql8_data:
+  redis_data:
+
+networks:
+  wps_network:
+    driver: bridge

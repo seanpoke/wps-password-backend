@@ -32,10 +32,11 @@ public class WebMvcConfig implements WebMvcConfigurer {
         var noTokenUrls = configService.getNoTokenUrls();
         
         // 合并数据库配置和硬编码的排除路径
-        String[] excludePatterns = new String[noTokenUrls.size() + 3];
+        String[] excludePatterns = new String[noTokenUrls.size() + 4];
         for (int i = 0; i < noTokenUrls.size(); i++) {
             excludePatterns[i] = noTokenUrls.get(i);
         }
+        excludePatterns[excludePatterns.length - 4] = "/account/logout";
         excludePatterns[excludePatterns.length - 3] = "/swagger-ui/**";
         excludePatterns[excludePatterns.length - 2] = "/v3/api-docs/**";
         excludePatterns[excludePatterns.length - 1] = "/webjars/**";
