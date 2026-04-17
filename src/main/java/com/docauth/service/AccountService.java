@@ -3,6 +3,7 @@ package com.docauth.service;
 import com.docauth.context.UserContext;
 import com.docauth.dto.LoginResponse;
 import com.docauth.util.RedisUtil;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -57,5 +58,24 @@ public class AccountService {
         response.setName(userContext.getName());
 
         return response;
+    }
+
+    /**
+     * 用户登出业务逻辑
+     *
+     * @param token 用户的访问令牌
+     */
+    public void logout(String token) {
+        // 从Redis中获取用户对象
+        UserContext userContext = redisUtil.getObject(token, UserContext.class);
+        if (userContext == null) {
+            log.info("[logout] token无效 {}", token);
+        } else {
+            log.info("[logout] 登出请求，token: {}, 账号: {}, 姓名: {}", token, userContext.getAccount(), userContext.getName());
+            // 从Redis中删除token，使token立即失效
+            redisUtil.delete(token);
+        }
+        log.info("[logout] 登出成功，token已失效");
+
     }
 }

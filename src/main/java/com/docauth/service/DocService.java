@@ -55,16 +55,19 @@ public class DocService {
     public DocOwnerResponse getDocOwner(String docId) {
         log.info("[getDocOwner] 开始处理，docId: {}", docId);
 
+        // 从Token中获取当前登录用户信息
+        String currentAccount = UserContextHolder.getCurrentAccount();
+        if (currentAccount == null || currentAccount.isEmpty()) {
+            throw new RuntimeException("未授权：无法获取当前用户");
+        }
+
         // 从数据库查询文件信息
         DocInfo docInfo = docInfoRepository.findByUid(docId);
 
         if (docInfo == null) {
             // 从ThreadLocal获取当前登录用户信息
-            String account = UserContextHolder.getCurrentAccount();
+            String account = currentAccount;
             String name = UserContextHolder.getCurrentName();
-            if (account == null || account.isEmpty()) {
-                throw new RuntimeException("未授权：无法获取当前用户");
-            }
 
             // 从数据库读取RSA密钥对
             try {
@@ -94,10 +97,26 @@ public class DocService {
             }
         }
 
+        // 判断当前用户的读写权限
+        boolean readAuth = false;
+        boolean writeAuth = false;
+        
+        // 如果当前用户是文档所有者，则同时拥有读写权限
+        if (docInfo.getAccount().equals(currentAccount)) {
+            readAuth = true;
+            writeAuth = true;
+        } else {
+            // 否则检查是否有授权权限（只有读权限）
+            readAuth = hasUserPermission(docId, currentAccount);
+            writeAuth = false;
+        }
+
         // 构建响应
         DocOwnerResponse response = new DocOwnerResponse();
-        response.setAccount(docInfo.getAccount());
-        response.setName(docInfo.getName());
+        response.setOwnerAccount(docInfo.getAccount());
+        response.setOwnerName(docInfo.getName());
+        response.setReadAuth(readAuth);
+        response.setWriteAuth(writeAuth);
 
         return response;
     }
@@ -156,10 +175,23 @@ public class DocService {
      * @param currentAccount 当前用户账号
      */
     private void checkUserPermission(String docId, String currentAccount) {
-        // 第二步：根据docId查询账号权限的dnList集合
+        if (!hasUserPermission(docId, currentAccount)) {
+            throw new RuntimeException("无访问权限");
+        }
+    }
+
+    /**
+     * 判断用户对文档是否有访问权限（不抛异常，返回boolean）
+     *
+     * @param docId         文档ID
+     * @param currentAccount 当前用户账号
+     * @return 是否有权限
+     */
+    public boolean hasUserPermission(String docId, String currentAccount) {
+        // 第一步：根据docId查询账号权限的dnList集合
         List<DocShareRel> shareRels = docShareRelRepository.findByUid(docId);
         if (shareRels == null || shareRels.isEmpty()) {
-            throw new RuntimeException("无访问权限");
+            return false;
         }
 
         // 提取所有授权的DN路径
@@ -171,28 +203,24 @@ public class DocService {
         }
 
         if (authorizedDnList.isEmpty()) {
-            throw new RuntimeException("无访问权限");
+            return false;
         }
 
-        // 第三步：通过ldap查询当前用户的dn
+        // 第二步：通过ldap查询当前用户的dn
         String accountDn = ldapService.getUserDn(currentAccount);
         if (accountDn == null || accountDn.isEmpty()) {
-            throw new RuntimeException("无法获取用户LDAP信息");
+            return false;
         }
 
-        // 第四步：判断账号的dn是否属于"集合中某条路径"的子集（或就是该路径本身）
-        boolean hasPermission = false;
+        // 第三步：判断账号的dn是否属于"集合中某条路径"的子集（或就是该路径本身）
         for (String authorizedDn : authorizedDnList) {
             // 判断accountDn是否是authorizedDn的子路径或相同路径
             if (isDnSubPath(accountDn, authorizedDn)) {
-                hasPermission = true;
-                break;
+                return true;
             }
         }
 
-        if (!hasPermission) {
-            throw new RuntimeException("无访问权限");
-        }
+        return false;
     }
 
     /**

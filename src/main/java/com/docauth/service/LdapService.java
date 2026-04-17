@@ -41,12 +41,12 @@ public class LdapService {
 
     @Autowired
     private ConfigService configService;
-    
+
     /**
      * 本地内存缓存: key=baseDn, value=缓存数据(包含节点列表和过期时间)
      */
     private final ConcurrentHashMap<String, CacheEntry> ldapCache = new ConcurrentHashMap<>();
-    
+
     /**
      * 缓存条目
      */
@@ -54,12 +54,12 @@ public class LdapService {
     private static class CacheEntry {
         private List<LdapTreeNode> nodes;
         private long expireTime; // 过期时间戳(毫秒)
-        
+
         public CacheEntry(List<LdapTreeNode> nodes, long ttlMillis) {
             this.nodes = nodes;
             this.expireTime = System.currentTimeMillis() + ttlMillis;
         }
-        
+
         public boolean isExpired() {
             return System.currentTimeMillis() > expireTime;
         }
@@ -82,9 +82,10 @@ public class LdapService {
 
             List<String> dns = ldapTemplate.search(
                     query,
-                    (AttributesMapper<String>) attrs -> attrs.get("distinguishedName") != null
-                            ? attrs.get("distinguishedName").toString()
-                            : null
+                    (AttributesMapper<String>) attrs -> {
+                        Attribute dnAttr = attrs.get("distinguishedName");
+                        return dnAttr != null ? dnAttr.get().toString() : null;
+                    }
             );
 
             if (dns != null && !dns.isEmpty()) {
@@ -111,7 +112,7 @@ public class LdapService {
     public UserContext authenticate(String account, String password) {
         try {
             log.info("开始 LDAP 认证，账号: {}", account);
-            
+
             // 构建 LDAP 查询
             var query = LdapQueryBuilder.query()
                     .base(configService.getLdapBase())
@@ -119,18 +120,18 @@ public class LdapService {
 
             // 尝试验证密码
             ldapTemplate.authenticate(query, password);
-            
+
             // 认证成功，查询用户详细信息
             log.info("LDAP 认证成功，正在获取用户信息: {}", account);
-            
+
             List<UserContext> results = ldapTemplate.search(
                     query,
                     (AttributesMapper<UserContext>) attrs -> {
                         UserContext userContext = new UserContext();
-                        
+
                         // 设置账号
                         userContext.setAccount(account);
-                        
+
                         // 获取用户名称（优先 cn，其次 displayName）
                         String name = null;
                         if (attrs.get("cn") != null) {
@@ -139,25 +140,25 @@ public class LdapService {
                             name = attrs.get("displayName").get().toString();
                         }
                         userContext.setName(name != null ? name : account);
-                        
+
                         log.info("获取到用户信息 - 账号: {}, 姓名: {}", account, userContext.getName());
                         return userContext;
                     }
             );
-            
+
             if (results != null && !results.isEmpty()) {
                 return results.get(0);
             }
-            
+
             // 如果查询失败，返回基本的用户上下文
             log.warn("无法获取用户详细信息，使用默认名称");
             UserContext fallbackContext = new UserContext();
             fallbackContext.setAccount(account);
             fallbackContext.setName(account);
             return fallbackContext;
-            
+
         } catch (Exception e) {
-            log.error("LDAP 认证异常: {}, 原因: {}", account, e.getMessage());
+            log.error("LDAP 认证异常: {}, 原因: {}", account, e.getMessage(), e);
             return null;
         }
     }
@@ -238,15 +239,15 @@ public class LdapService {
             shareRels = docShareRelRepository.findByUid(docId);
             log.info("查询到文档 {} 的授权记录数量: {}", docId, shareRels != null ? shareRels.size() : 0);
         }
-        
+
         // 调试日志：打印配置的子树
         log.info("配置的 baseDn: {}", configService.getLdapBase());
         log.info("配置的 subTrees: {}", configService.getLdapTrees());
-        
+
         // 获取 LDAP 树形结构(从缓存或LDAP查询)
         List<LdapTreeNode> tree = getLdapTreeNodes();
         log.info("获取到 LDAP 树根节点数量: {}", tree.size());
-        
+
         // 转换为精简的 DTO
         List<LdapNodeDTO> result = new ArrayList<>();
         for (LdapTreeNode node : tree) {
@@ -262,38 +263,38 @@ public class LdapService {
 
     private List<LdapTreeNode> getLdapTreeNodes() {
         String cacheKey = configService.getLdapBase();
-        
+
         // 1. 优先从本地内存缓存中查询
         CacheEntry cacheEntry = ldapCache.get(cacheKey);
         if (cacheEntry != null && !cacheEntry.isExpired()) {
             log.info("从本地内存缓存中获取 LDAP 树形结构, key: {}, 根节点数量: {}", cacheKey, cacheEntry.getNodes().size());
             return cacheEntry.getNodes();
         }
-        
+
         // 2. 缓存未命中或已过期，访问 LDAP 查询
         if (cacheEntry != null && cacheEntry.isExpired()) {
             log.info("本地缓存已过期，开始重新查询 LDAP 树形结构, base: {}", cacheKey);
         } else {
             log.info("本地缓存未命中，开始查询 LDAP 树形结构, base: {}", cacheKey);
         }
-        
+
         // 从LDAP查询平铺的节点列表
         List<LdapTreeNode> allEntries = getLdapEntriesFromLdap();
         log.info("从LDAP查询到节点数量: {}", allEntries.size());
-        
+
         // 构建树形结构
         List<LdapTreeNode> tree = buildTree(allEntries);
         log.info("构建后的树根节点数量: {}", tree.size());
-        
+
         // 3. 将构建好的树形结构存入本地内存缓存（从数据库读取过期时间）
         if (tree != null && !tree.isEmpty()) {
             long ttlMillis = configService.getCacheExpireMinutes() * 60 * 1000L; // 转换为毫秒
             CacheEntry newEntry = new CacheEntry(tree, ttlMillis);
             ldapCache.put(cacheKey, newEntry);
-            log.info("LDAP 树形结构已缓存到本地内存, key: {}, 根节点数量: {}, 过期时间: {}分钟", 
+            log.info("LDAP 树形结构已缓存到本地内存, key: {}, 根节点数量: {}, 过期时间: {}分钟",
                     cacheKey, tree.size(), configService.getCacheExpireMinutes());
         }
-        
+
         return tree;
     }
 
@@ -499,15 +500,15 @@ public class LdapService {
         if (dn == null || dn.isEmpty()) {
             return false;
         }
-    
+
         String lowerDn = dn.toLowerCase();
         String lowerBase = configService.getLdapBase().toLowerCase();
-    
+
         // baseDn 本身始终包含
         if (lowerDn.equals(lowerBase)) {
             return true;
         }
-    
+
         // 如果配置了子树限制,检查是否属于某个子树或其子节点
         List<String> subTrees = configService.getLdapTrees();
         if (!CollectionUtils.isEmpty(subTrees)) {
@@ -521,7 +522,7 @@ public class LdapService {
             // 如果配置了子树限制,但节点不属于任何子树,则排除
             return false;
         }
-    
+
         // 如果没有配置子树限制,则包含 baseDn 下的所有节点
         return lowerDn.endsWith("," + lowerBase);
     }
@@ -546,7 +547,7 @@ public class LdapService {
         String parentDn = dn.substring(firstCommaIndex + 1).trim();
         return parentDn.isEmpty() ? null : parentDn;
     }
-    
+
     /**
      * 从 LDAP 查询平铺的节点列表(无树形关系)
      *
@@ -554,7 +555,7 @@ public class LdapService {
      */
     private List<LdapTreeNode> getLdapEntriesFromLdap() {
         String cacheKey = configService.getLdapBase();
-        
+
         // 使用 AndFilter 和 HardcodedFilter 来查询所有条目，但排除组对象
         // 过滤条件：objectClass=person 或 objectClass=organizationalUnit，排除 group/groupOfNames
         AndFilter filter = new AndFilter();
