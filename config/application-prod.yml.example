@@ -1,0 +1,32 @@
+# 外部配置文件示例
+# 将此文件放在服务器的 config/ 目录下，即可覆盖 jar 包内的配置
+
+spring:
+  datasource:
+    # 使用 busi.outer-ip 变量，可以通过环境变量 BUSI_OUTER_IP 覆盖
+    url: jdbc:mysql://${busi.outer-ip}:3306/doc_auth_system?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&maxAllowedPacket=10485760
+    username: root
+    password: your-database-password
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  
+  data:
+    redis:
+      host: ${busi.outer-ip}
+      port: 6379
+      password: your-redis-password
+      database: 0
+
+# 业务配置
+busi:
+  outer-ip: localhost  # 默认值，可通过环境变量 BUSI_OUTER_IP 覆盖
+
+# 服务器配置
+server:
+  port: 8080
+
+# Swagger 配置（生产环境建议关闭）
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
