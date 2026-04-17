@@ -2,7 +2,7 @@ name: Build and Push Docker Image
 
 on:
   push:
-    branches: [ "main" ] # 监听 main 分支，也可以改为 master
+    branches: [ "master" ] # 监听 main 分支，也可以改为 master
     tags: [ 'v*' ]       # 监听 v 开头的标签
 
 env:
