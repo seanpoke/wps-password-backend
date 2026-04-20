@@ -316,9 +316,9 @@ public class LdapService {
                         break;
                     }
                 }
-                // 如果是用户类型(type=1)，且节点的account与授权的name匹配
+                // 如果是用户类型(type=1)，且节点的DN与授权的DN完全匹配
                 else if (rel.getType() == 1 && node.getType() == 1) { // 1表示用户
-                    if (node.getAccount() != null && node.getAccount().equals(rel.getName())) {
+                    if (node.getDn() != null && node.getDn().equalsIgnoreCase(rel.getDn())) {
                         hasAuth = true;
                         break;
                     }
