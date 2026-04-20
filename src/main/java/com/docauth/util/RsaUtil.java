@@ -9,7 +9,8 @@ import java.util.Base64;
 public class RsaUtil {
     
     private static final String ALGORITHM = "RSA";
-    private static final int KEY_SIZE = 1024; // 使用1024位，密文长度约172字符
+    private static final String TRANSFORMATION = "RSA/ECB/OAEPWithSHA-256AndMGF1Padding"; // 使用OAEP填充防止Padding Oracle攻击
+    private static final int KEY_SIZE = 2048; // 使用2048位，密文长度约344字符
     
     /**
      * 生成RSA公私钥对
@@ -45,7 +46,7 @@ public class RsaUtil {
         KeyFactory keyFactory = KeyFactory.getInstance(ALGORITHM);
         PrivateKey privateKey = keyFactory.generatePrivate(keySpec);
         
-        Cipher cipher = Cipher.getInstance(ALGORITHM);
+        Cipher cipher = Cipher.getInstance(TRANSFORMATION);
         cipher.init(Cipher.DECRYPT_MODE, privateKey);
         
         byte[] decryptedBytes = cipher.doFinal(encryptedBytes);
@@ -58,7 +59,7 @@ public class RsaUtil {
             String publicKey = keyPair[0];
             String privateKey = keyPair[1];
 
-            String data = "xsn123";
+            String data = "sidnficksn12";
             String encryptedData = RsaUtil.encrypt(data, publicKey);
             String decryptedData = RsaUtil.decrypt(encryptedData, privateKey);
 
@@ -90,7 +91,7 @@ public class RsaUtil {
         KeyFactory keyFactory = KeyFactory.getInstance(ALGORITHM);
         PublicKey publicKey = keyFactory.generatePublic(keySpec);
         
-        Cipher cipher = Cipher.getInstance(ALGORITHM);
+        Cipher cipher = Cipher.getInstance(TRANSFORMATION);
         cipher.init(Cipher.ENCRYPT_MODE, publicKey);
         
         byte[] encryptedBytes = cipher.doFinal(dataBytes);
