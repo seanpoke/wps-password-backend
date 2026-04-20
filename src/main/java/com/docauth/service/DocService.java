@@ -278,7 +278,7 @@ public class DocService {
             for (String dn : accountDnList) {
                 DocShareRel shareRel = new DocShareRel();
                 shareRel.setUid(docId);
-                shareRel.setType(0); // 0表示用户
+                shareRel.setType(1); // 1表示用户
                 String value = extractValueFromDn(dn);
                 shareRel.setName(value);
                 shareRel.setDn(dn);
@@ -293,7 +293,7 @@ public class DocService {
             for (String dn : deptDnList) {
                 DocShareRel shareRel = new DocShareRel();
                 shareRel.setUid(docId);
-                shareRel.setType(1); // 1表示部门
+                shareRel.setType(0); // 0表示部门
                 String value = extractValueFromDn(dn);
                 shareRel.setName(value);
                 shareRel.setDn(dn);
