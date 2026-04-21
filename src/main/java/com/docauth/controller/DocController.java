@@ -148,7 +148,8 @@ public class DocController {
                 request.getPath(),
                 request.getBeforePassword(),
                 request.getAfterPassword(),
-                request.getPossiblePasword()
+                request.getPossiblePasword(),
+                request.getPlatform()
             );
             return ApiResponse.success("操作成功");
         } catch (Exception e) {
