@@ -10,7 +10,7 @@ import com.docauth.entity.DocShareRel;
 import com.docauth.repository.DocInfoRepository;
 import com.docauth.repository.DocOperateLogRepository;
 import com.docauth.repository.DocShareRelRepository;
-import com.docauth.util.RsaUtil;
+import com.docauth.util.EccUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -78,7 +78,7 @@ public class DocService {
                 String privateKey = configService.getPrivateKey();
 
                 if (publicKey == null || privateKey == null) {
-                    throw new RuntimeException("系统配置错误：未找到RSA密钥配置");
+                    throw new RuntimeException("系统配置错误：未找到ECC密钥配置");
                 }
 
                 // 创建新的DocInfo记录
@@ -128,7 +128,7 @@ public class DocService {
      * 获取文档密码
      *
      * @param docId          文档ID
-     * @param encryPassword  RSA加密的密码
+     * @param encryPassword  ECC加密的密码
      * @return 解密后的密码响应对象
      * @throws RuntimeException 业务异常时抛出
      */
@@ -153,9 +153,9 @@ public class DocService {
             checkUserPermission(docId, currentAccount);
         }
 
-        // 使用私钥解密
+        // 使用ECC私钥解密
         try {
-            String password = RsaUtil.decrypt(encryPassword, docInfo.getPrivateKey());
+            String password = EccUtil.decrypt(encryPassword, docInfo.getPrivateKey());
             
             // 构建响应
             DocPasswordResponse response = new DocPasswordResponse();
@@ -166,7 +166,7 @@ public class DocService {
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
-            log.error("[getDocPassword] 解密失败: {}", e.getMessage(), e);
+            log.error("[getDocPassword] ECC解密失败: {}", e.getMessage(), e);
             throw new RuntimeException("解密失败", e);
         }
     }

@@ -9,6 +9,6 @@ public class DocPasswordRequest {
     @Schema(description = "文档ID", example = "doc123456", requiredMode = Schema.RequiredMode.REQUIRED)
     private String docId;
     
-    @Schema(description = "RSA加密后的密码", example = "encrypted_password_here", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "ECC加密后的密码", example = "encrypted_password_here", requiredMode = Schema.RequiredMode.REQUIRED)
     private String encryPassword;
 }
