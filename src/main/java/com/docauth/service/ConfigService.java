@@ -2,7 +2,7 @@ package com.docauth.service;
 
 import com.docauth.entity.DocConfig;
 import com.docauth.repository.DocConfigRepository;
-import com.docauth.util.RsaUtil;
+import com.docauth.util.EccUtil;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -268,7 +268,7 @@ public class ConfigService {
     }
 
     /**
-     * 使用公钥加密文本的业务逻辑
+     * 使用公钥加密文本的业务逻辑（ECC加密）
      *
      * @param text 待加密的原始文本
      * @return 加密结果Map，包含encryptedText、originalLength、encryptedLength
@@ -282,8 +282,8 @@ public class ConfigService {
         }
 
         try {
-            // 使用公钥加密
-            String encryptedText = RsaUtil.encrypt(text, publicKey);
+            // 使用ECC公钥加密
+            String encryptedText = EccUtil.encrypt(text, publicKey);
 
             // 构建响应
             Map<String, String> result = new HashMap<>();
@@ -291,10 +291,10 @@ public class ConfigService {
             result.put("originalLength", String.valueOf(text.length()));
             result.put("encryptedLength", String.valueOf(encryptedText.length()));
 
-            log.info("加密成功 - 原始长度: {}, 加密后长度: {}", text.length(), encryptedText.length());
+            log.info("ECC加密成功 - 原始长度: {}, 加密后长度: {}", text.length(), encryptedText.length());
             return result;
         } catch (Exception e) {
-            log.error("加密失败: {}", e.getMessage(), e);
+            log.error("ECC加密失败: {}", e.getMessage(), e);
             throw new RuntimeException("加密失败: " + e.getMessage(), e);
         }
     }
