@@ -21,4 +21,7 @@ public class SaveLogRequest {
     
     @Schema(description = "可能的密码列表")
     private List<String> possiblePasword;
+    
+    @Schema(description = "操作来源平台", example = "win、android")
+    private String platform;
 }

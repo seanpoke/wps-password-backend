@@ -15,9 +15,6 @@ public class DocPasswordLog {
     @Column(name = "uid", nullable = false, length = 64)
     private String uid;
     
-    @Column(name = "type", nullable = false, length = 64)
-    private String type;
-
     @Column(name = "path", length = 500)
     private String path;
 
@@ -30,9 +27,16 @@ public class DocPasswordLog {
     @Column(name = "possible_password", columnDefinition = "text")
     private String possiblePassword;
 
+    @Column(name = "platform", length = 64)
+    private String platform;
+
     @Column(name = "create_time", nullable = false, updatable = false)
     @Temporal(TemporalType.TIMESTAMP)
     private Date createTime;
+
+    @Column(name = "update_time")
+    @Temporal(TemporalType.TIMESTAMP)
+    private Date updateTime;
 
     @Column(name = "create_by", nullable = false, length = 64)
     private String createBy;
@@ -40,5 +44,11 @@ public class DocPasswordLog {
     @PrePersist
     public void prePersist() {
         createTime = new Date();
+        updateTime = new Date();
+    }
+
+    @PreUpdate
+    public void preUpdate() {
+        updateTime = new Date();
     }
 }
