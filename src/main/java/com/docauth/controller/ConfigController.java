@@ -1,9 +1,8 @@
 package com.docauth.controller;
 
-import com.docauth.dto.ApiResponse;
+import com.docauth.dto.*;
 import com.docauth.service.ConfigService;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,7 +34,7 @@ public class ConfigController {
         config.put("base", configService.getLdapBase());
         config.put("username", configService.getLdapUsername());
         config.put("trees", configService.getLdapTrees());
-        
+
         return ApiResponse.success(config);
     }
 
@@ -49,11 +48,11 @@ public class ConfigController {
             for (Map.Entry<String, String> entry : configs.entrySet()) {
                 String key = entry.getKey();
                 String value = entry.getValue();
-                
+
                 // 更新配置(直接使用 key,不需要 ldap. 前缀)
                 configService.updateConfig(key, value);
             }
-            
+
             return ApiResponse.success("配置更新成功");
         } catch (Exception e) {
             log.error("更新配置失败: {}", e.getMessage(), e);
@@ -79,17 +78,17 @@ public class ConfigController {
     /**
      * 使用公钥加密字符串
      */
-    @GetMapping("/encrypt")
-    @Operation(summary = "公钥加密", description = "使用系统公钥对传入的字符串进行RSA加密")
-    public ApiResponse<Map<String, String>> encrypt(@Parameter(description = "待加密的原始字符串", required = true) @RequestParam String text) {
+    @PostMapping("/encrypt")
+    @Operation(summary = "公钥加密", description = "使用系统公钥对传入的字符串进行ECC加密")
+    public ApiResponse<EncryptResponse> encrypt(@RequestBody EncryptRequest request) {
         // 校验参数
-        if (text == null || text.isEmpty()) {
+        if (request.getText() == null || request.getText().isEmpty()) {
             return ApiResponse.error(400, "参数错误：text不能为空");
         }
 
         try {
             // 调用Service处理加密业务逻辑
-            Map<String, String> result = configService.encryptText(text);
+            EncryptResponse result = configService.encryptText(request.getText(), request.getKeyVersion());
             return ApiResponse.success(result);
         } catch (RuntimeException e) {
             log.warn("加密失败: {}", e.getMessage());
@@ -97,6 +96,52 @@ public class ConfigController {
         } catch (Exception e) {
             log.error("加密异常: {}", e.getMessage(), e);
             return ApiResponse.error(500, "加密失败：系统异常");
+        }
+    }
+
+    /**
+     * 获取最新的密钥版本和公钥
+     */
+    @GetMapping("/latest-key")
+    @Operation(summary = "获取最新密钥信息", description = "获取当前优先级最高的密钥版本和公钥")
+    public ApiResponse<KeyInfoResponse> getLatestKeyInfo() {
+        try {
+            // 调用Service获取最新密钥信息
+            KeyInfoResponse result = configService.getLatestKeyInfo();
+            return ApiResponse.success(result);
+        } catch (RuntimeException e) {
+            log.warn("获取密钥信息失败: {}", e.getMessage());
+            return ApiResponse.error(500, e.getMessage());
+        } catch (Exception e) {
+            log.error("获取密钥信息异常: {}", e.getMessage(), e);
+            return ApiResponse.error(500, "获取密钥信息失败：系统异常");
+        }
+    }
+
+    /**
+     * 使用私钥解密字符串
+     */
+    @PostMapping("/decrypt")
+    @Operation(summary = "私钥解密", description = "使用系统私钥对传入的密文进行ECC解密")
+    public ApiResponse<DecryptResponse> decrypt(@RequestBody DecryptRequest request) {
+        // 校验参数
+        if (request.getEncryptedText() == null || request.getEncryptedText().isEmpty()) {
+            return ApiResponse.error(400, "参数错误：encryptedText不能为空");
+        }
+
+        try {
+            // 调用Service处理解密业务逻辑
+            DecryptResponse result = configService.decryptText(
+                    request.getEncryptedText(),
+                    request.getKeyVersion()
+            );
+            return ApiResponse.success(result);
+        } catch (RuntimeException e) {
+            log.warn("解密失败: {}", e.getMessage());
+            return ApiResponse.error(500, e.getMessage());
+        } catch (Exception e) {
+            log.error("解密异常: {}", e.getMessage(), e);
+            return ApiResponse.error(500, "解密失败：系统异常");
         }
     }
 }
