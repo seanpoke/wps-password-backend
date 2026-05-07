@@ -1,6 +1,11 @@
 package com.docauth.service;
 
+import com.docauth.dto.DecryptResponse;
+import com.docauth.dto.EncryptResponse;
+import com.docauth.dto.KeyInfoResponse;
+import com.docauth.entity.ConfigSecretKey;
 import com.docauth.entity.DocConfig;
+import com.docauth.repository.ConfigSecretKeyRepository;
 import com.docauth.repository.DocConfigRepository;
 import com.docauth.util.EccUtil;
 import lombok.Data;
@@ -25,11 +30,13 @@ public class ConfigService {
     @Autowired
     private DocConfigRepository docConfigRepository;
 
+    @Autowired
+    private ConfigSecretKeyRepository configSecretKeyRepository;
+
     // 配置类型常量
     public static final String CONFIG_TYPE_LDAP = "ldap-config";
     public static final String CONFIG_TYPE_SYS = "sys-config";
     public static final String CONFIG_TYPE_CACHE = "cache-config";
-    public static final String CONFIG_TYPE_SECRET = "sceret-config";
 
     // LDAP配置键常量
     public static final String LDAP_URL = "url";
@@ -43,10 +50,6 @@ public class ConfigService {
     
     // 缓存配置键常量
     public static final String CACHE_EXPIRE = "expire";
-    
-    // 密钥配置键常量
-    public static final String SECRET_PUBLIC_KEY = "public-key";
-    public static final String SECRET_PRIVATE_KEY = "private-key";
 
     // 缓存配置值
     private String ldapUrl;
@@ -136,13 +139,24 @@ public class ConfigService {
     }
     
     /**
-     * 从数据库加载密钥配置
+     * 从数据库加载密钥配置（从config_secret_key表获取优先级最高的密钥）
      */
     public void loadSecretConfig() {
         try {
-            publicKey = getConfigValueWithSecret(SECRET_PUBLIC_KEY);
-            privateKey = getConfigValueWithSecret(SECRET_PRIVATE_KEY);
-            log.info("密钥配置加载成功");
+            // 查询order_num最大的配置密钥（优先级最高）
+            ConfigSecretKey latestKey = configSecretKeyRepository.findFirstByOrderByOrderNumDesc()
+                    .orElse(null);
+            
+            if (latestKey != null) {
+                publicKey = latestKey.getPublicKey();
+                privateKey = latestKey.getPrivateKey();
+                log.info("密钥配置加载成功，keyVersion: {}, orderNum: {}", 
+                        latestKey.getKeyVersion(), latestKey.getOrderNum());
+            } else {
+                log.warn("未找到任何配置密钥，请确保config_secret_key表中有数据");
+                publicKey = null;
+                privateKey = null;
+            }
         } catch (Exception e) {
             log.error("加载密钥配置失败: {}", e.getMessage(), e);
             throw new RuntimeException("加载密钥配置失败", e);
@@ -157,18 +171,6 @@ public class ConfigService {
      */
     private String getConfigValue(String key) {
         return docConfigRepository.findFirstByTypeAndKey(CONFIG_TYPE_LDAP, key)
-                .map(DocConfig::getValue)
-                .orElse(null);
-    }
-    
-    /**
-     * 获取密钥配置值(单个值)
-     *
-     * @param key 配置键
-     * @return 配置值
-     */
-    private String getConfigValueWithSecret(String key) {
-        return docConfigRepository.findFirstByTypeAndKey(CONFIG_TYPE_SECRET, key)
                 .map(DocConfig::getValue)
                 .orElse(null);
     }
@@ -270,32 +272,115 @@ public class ConfigService {
     /**
      * 使用公钥加密文本的业务逻辑（ECC加密）
      *
-     * @param text 待加密的原始文本
-     * @return 加密结果Map，包含encryptedText、originalLength、encryptedLength
+     * @param text       待加密的原始文本
+     * @param keyVersion 密钥版本，默认为"default"
+     * @return 加密响应对象，包含encryptedText、originalLength、encryptedLength和keyVersion
      * @throws RuntimeException 加密失败时抛出
      */
-    public Map<String, String> encryptText(String text) {
-        // 从数据库获取公钥
-        String publicKey = getPublicKey();
+    public EncryptResponse encryptText(String text, String keyVersion) {
+        // 根据keyVersion获取公钥
+        String actualKeyVersion = keyVersion != null && !keyVersion.isEmpty() ? keyVersion : "default";
+        
+        ConfigSecretKey configKey;
+        if ("latest".equals(actualKeyVersion)) {
+            // 如果传入"latest"，获取优先级最高的密钥
+            configKey = configSecretKeyRepository.findFirstByOrderByOrderNumDesc()
+                    .orElseThrow(() -> new RuntimeException("系统配置错误：未找到配置密钥"));
+        } else {
+            // 根据keyVersion查询指定版本的密钥
+            configKey = configSecretKeyRepository.findByKeyVersion(actualKeyVersion)
+                    .orElseThrow(() -> new RuntimeException("系统配置错误：未找到密钥版本: " + actualKeyVersion));
+        }
+        
+        String publicKey = configKey.getPublicKey();
         if (publicKey == null || publicKey.isEmpty()) {
-            throw new RuntimeException("系统配置错误：未找到公钥配置");
+            throw new RuntimeException("系统配置错误：公钥为空");
         }
 
         try {
             // 使用ECC公钥加密
             String encryptedText = EccUtil.encrypt(text, publicKey);
 
-            // 构建响应
-            Map<String, String> result = new HashMap<>();
-            result.put("encryptedText", encryptedText);
-            result.put("originalLength", String.valueOf(text.length()));
-            result.put("encryptedLength", String.valueOf(encryptedText.length()));
+            // 构建响应对象
+            EncryptResponse response = new EncryptResponse();
+            response.setEncryptedText(encryptedText);
+            response.setOriginalLength(text.length());
+            response.setEncryptedLength(encryptedText.length());
+            response.setKeyVersion(configKey.getKeyVersion());
 
-            log.info("ECC加密成功 - 原始长度: {}, 加密后长度: {}", text.length(), encryptedText.length());
-            return result;
+            log.info("ECC加密成功 - keyVersion: {}, 原始长度: {}, 加密后长度: {}", 
+                    configKey.getKeyVersion(), text.length(), encryptedText.length());
+            return response;
         } catch (Exception e) {
             log.error("ECC加密失败: {}", e.getMessage(), e);
             throw new RuntimeException("加密失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 获取最新的密钥版本和公钥
+     *
+     * @return 密钥信息响应对象
+     * @throws RuntimeException 未找到密钥配置时抛出
+     */
+    public KeyInfoResponse getLatestKeyInfo() {
+        // 查询order_num最大的配置密钥（优先级最高）
+        ConfigSecretKey latestKey = configSecretKeyRepository.findFirstByOrderByOrderNumDesc()
+                .orElseThrow(() -> new RuntimeException("系统配置错误：未找到配置密钥"));
+
+        KeyInfoResponse response = new KeyInfoResponse();
+        response.setKeyVersion(latestKey.getKeyVersion());
+        response.setPublicKey(latestKey.getPublicKey());
+
+        log.info("获取最新密钥信息成功 - keyVersion: {}", latestKey.getKeyVersion());
+        return response;
+    }
+
+    /**
+     * 使用私钥解密文本的业务逻辑（ECC解密）
+     *
+     * @param encryptedText ECC加密后的密文
+     * @param keyVersion    密钥版本，默认为"default"
+     * @return 解密响应对象，包含decryptedText和keyVersion
+     * @throws RuntimeException 解密失败时抛出
+     */
+    public DecryptResponse decryptText(String encryptedText, String keyVersion) {
+        // 根据keyVersion获取私钥
+        String actualKeyVersion = keyVersion != null && !keyVersion.isEmpty() ? keyVersion : "default";
+        
+        ConfigSecretKey configKey;
+        if ("latest".equals(actualKeyVersion)) {
+            // 如果传入"latest"，获取优先级最高的密钥
+            configKey = configSecretKeyRepository.findFirstByOrderByOrderNumDesc()
+                    .orElseThrow(() -> new RuntimeException("系统配置错误：未找到配置密钥"));
+        } else {
+            // 根据keyVersion查询指定版本的密钥
+            configKey = configSecretKeyRepository.findByKeyVersion(actualKeyVersion)
+                    .orElseThrow(() -> new RuntimeException("系统配置错误：未找到密钥版本: " + actualKeyVersion));
+        }
+        
+        String privateKey = configKey.getPrivateKey();
+        if (privateKey == null || privateKey.isEmpty()) {
+            throw new RuntimeException("系统配置错误：私钥为空");
+        }
+
+        try {
+            // 使用ECC私钥解密
+            String decryptedText = EccUtil.decrypt(encryptedText, privateKey);
+
+            // 构建响应对象
+            DecryptResponse response = new DecryptResponse();
+            response.setDecryptedText(decryptedText);
+            response.setKeyVersion(configKey.getKeyVersion());
+
+            log.info("ECC解密成功 - keyVersion: {}, 解密后长度: {}", 
+                    configKey.getKeyVersion(), decryptedText.length());
+            return response;
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("ECC解密失败: {}", e.getMessage(), e);
+            throw new RuntimeException("解密失败: " + e.getMessage(), e);
         }
     }
 }

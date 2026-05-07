@@ -61,7 +61,7 @@ public class DocController {
     @PostMapping("/password")
     @Operation(summary = "获取文档密码", description = "通过RSA加密的密码获取文档解密后的密码，需要验证用户权限")
     public ApiResponse<?> getDocPassword(@RequestBody DocPasswordRequest request) {
-        log.info("[getDocPassword] 请求参数: docId={}", request.getDocId());
+        log.info("[getDocPassword] 请求参数: docId={}, keyVersion={}", request.getDocId(), request.getKeyVersion());
             
         // 校验参数非空
         if (request.getDocId() == null || request.getDocId().isEmpty() ||
@@ -71,7 +71,11 @@ public class DocController {
     
         try {
             // 调用Service处理业务逻辑
-            DocPasswordResponse response = docService.getDocPassword(request.getDocId(), request.getEncryPassword());
+            DocPasswordResponse response = docService.getDocPassword(
+                request.getDocId(), 
+                request.getEncryPassword(), 
+                request.getKeyVersion()
+            );
             return ApiResponse.success(response);
         } catch (RuntimeException e) {
             log.warn("[getDocPassword] 业务异常: {}", e.getMessage());

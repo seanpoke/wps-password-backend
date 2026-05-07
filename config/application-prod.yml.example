@@ -30,3 +30,12 @@ springdoc:
     enabled: false
   swagger-ui:
     enabled: false
+
+# 日志配置（生产环境）
+logging:
+  level:
+    # 业务日志调整为INFO，减少日志量
+    com.docauth: INFO
+    # 关闭SQL日志，提高性能
+    org.hibernate.SQL: WARN
+    org.hibernate.type.descriptor.sql.BasicBinder: WARN

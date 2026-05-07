@@ -30,8 +30,8 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 # 从builder阶段复制构建好的jar包
 COPY --from=builder /app/target/wps-password-backend-1.0.0.jar app.jar
 
-# 创建外部配置目录
-RUN mkdir -p /app/config && chown -R appuser:appgroup /app/config
+# 创建外部配置目录和日志目录
+RUN mkdir -p /app/config /app/logs && chown -R appuser:appgroup /app/config /app/logs
 
 # 修改文件所有者
 RUN chown -R appuser:appgroup /app
@@ -40,12 +40,9 @@ RUN chown -R appuser:appgroup /app
 USER appuser
 
 # 暴露应用端口
-EXPOSE 8080
+EXPOSE 8081
 
-# JVM参数优化
-# -Dspring.config.location: 指定外部配置文件路径（优先级高于jar包内的配置）
-# -Dspring.config.additional-location: 额外加载的配置文件（与jar包内配置合并）
-ENV JAVA_OPTS="-Xms256m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/app/logs/heapdump.hprof"
+ENV JAVA_OPTS="-Xms2g -Xmx2g -XX:NewRatio=1 -XX:SurvivorRatio=8 -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=4m -XX:ConcGCThreads=2 -XX:G1ReservePercent=10 -XX:InitiatingHeapOccupancyPercent=45 -XX:+UseStringDeduplication -XX:+ParallelRefProcEnabled -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/app/logs/heapdump.hprof"
 ENV SPRING_CONFIG_LOCATION="file:/app/config/application.yml,file:/app/config/application-prod.yml"
 
 # 健康检查

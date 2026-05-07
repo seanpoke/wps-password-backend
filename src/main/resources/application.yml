@@ -4,10 +4,24 @@ spring:
     username: root
     password: root123456
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      # 连接最大存活时间(毫秒)，设置为比MySQL wait_timeout少30秒，默认25分钟
+      max-lifetime: 1800000
+      # 连接超时时间(毫秒)
+      connection-timeout: 30000
+      # 空闲连接最大存活时间(毫秒)
+      idle-timeout: 600000
+      # 最小空闲连接数
+      minimum-idle: 5
+      # 最大连接池大小
+      maximum-pool-size: 20
+      # 连接测试查询
+      connection-test-query: SELECT 1
+      # 泄漏检测阈值(毫秒)，0表示禁用
+      leak-detection-threshold: 60000
   jpa:
     hibernate:
       ddl-auto: none
-    show-sql: true
     properties:
       hibernate:
         dialect: org.hibernate.dialect.MySQLDialect

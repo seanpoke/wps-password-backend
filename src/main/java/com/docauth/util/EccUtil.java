@@ -33,8 +33,7 @@ public class EccUtil {
     
     // AES加密相关常量
     private static final String AES_ALGORITHM = "AES/CBC/PKCS5Padding";
-    private static final int AES_KEY_SIZE = 256; // 256位AES密钥
-    
+
     static {
         // 注册BouncyCastle Provider
         Security.addProvider(new BouncyCastleProvider());

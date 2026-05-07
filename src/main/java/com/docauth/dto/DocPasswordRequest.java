@@ -11,4 +11,7 @@ public class DocPasswordRequest {
     
     @Schema(description = "ECC加密后的密码", example = "encrypted_password_here", requiredMode = Schema.RequiredMode.REQUIRED)
     private String encryPassword;
+    
+    @Schema(description = "公私钥版本", example = "default", defaultValue = "default")
+    private String keyVersion = "default";
 }

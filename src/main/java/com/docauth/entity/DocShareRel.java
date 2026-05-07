@@ -6,7 +6,10 @@ import java.util.Date;
 
 @Data
 @Entity
-@Table(name = "doc_share_rel")
+@Table(name = "doc_share_rel",
+        indexes = {
+                @Index(name = "idx_uid", columnList = "uid")
+        })
 public class DocShareRel {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

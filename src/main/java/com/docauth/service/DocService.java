@@ -4,11 +4,15 @@ import com.docauth.context.UserContextHolder;
 import com.docauth.dto.DocOwnerResponse;
 import com.docauth.dto.DocPasswordResponse;
 import com.docauth.dto.LdapNodeDTO;
+import com.docauth.entity.ConfigSecretKey;
 import com.docauth.entity.DocInfo;
 import com.docauth.entity.DocPasswordLog;
+import com.docauth.entity.DocSecretKey;
 import com.docauth.entity.DocShareRel;
+import com.docauth.repository.ConfigSecretKeyRepository;
 import com.docauth.repository.DocInfoRepository;
 import com.docauth.repository.DocOperateLogRepository;
+import com.docauth.repository.DocSecretKeyRepository;
 import com.docauth.repository.DocShareRelRepository;
 import com.docauth.util.EccUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -38,6 +42,12 @@ public class DocService {
 
     @Autowired
     private DocOperateLogRepository docOperateLogRepository;
+
+    @Autowired
+    private DocSecretKeyRepository docSecretKeyRepository;
+
+    @Autowired
+    private ConfigSecretKeyRepository configSecretKeyRepository;
 
     @Autowired
     private LdapService ldapService;
@@ -72,31 +82,35 @@ public class DocService {
             String account = currentAccount;
             String name = UserContextHolder.getCurrentName();
 
-            // 从数据库读取RSA密钥对
+            // 创建新的DocInfo记录（不再存储公私钥）
+            docInfo = new DocInfo();
+            docInfo.setUid(docId);
+            docInfo.setAccount(account);
+            docInfo.setName(name != null ? name : account);
+            docInfo.setCreateBy(account);
+            docInfoRepository.save(docInfo);
+            
+            log.info("[getDocOwner] 创建新文档记录，docId: {}, owner: {}", docId, account);
+            
+            // 查询最新的配置密钥并插入到doc_secret_key中
             try {
-                String publicKey = configService.getPublicKey();
-                String privateKey = configService.getPrivateKey();
-
-                if (publicKey == null || privateKey == null) {
-                    throw new RuntimeException("系统配置错误：未找到ECC密钥配置");
-                }
-
-                // 创建新的DocInfo记录
-                docInfo = new DocInfo();
-                docInfo.setUid(docId);
-                docInfo.setPublicKey(publicKey);
-                docInfo.setPrivateKey(privateKey);
-                docInfo.setAccount(account);
-                docInfo.setName(name != null ? name : account);
-                docInfo.setCreateBy(account);
-                docInfoRepository.save(docInfo);
+                ConfigSecretKey latestConfigKey = configSecretKeyRepository.findFirstByOrderByOrderNumDesc()
+                        .orElseThrow(() -> new RuntimeException("系统配置错误：未找到配置密钥"));
                 
-                log.info("[getDocOwner] 创建新文档记录，docId: {}, owner: {}", docId, account);
+                // 创建文档密钥记录
+                DocSecretKey docSecretKey = new DocSecretKey();
+                docSecretKey.setUid(docId);
+                docSecretKey.setPublicKey(latestConfigKey.getPublicKey());
+                docSecretKey.setPrivateKey(latestConfigKey.getPrivateKey());
+                docSecretKey.setKeyVersion(latestConfigKey.getKeyVersion());
+                docSecretKeyRepository.save(docSecretKey);
+                
+                log.info("[getDocOwner] 为文档创建密钥记录，docId: {}, keyVersion: {}", docId, latestConfigKey.getKeyVersion());
             } catch (RuntimeException e) {
                 throw e;
             } catch (Exception e) {
-                log.error("[getDocOwner] 创建文档信息失败: {}", e.getMessage(), e);
-                throw new RuntimeException("创建文档信息失败", e);
+                log.error("[getDocOwner] 创建文档密钥记录失败: {}", e.getMessage(), e);
+                throw new RuntimeException("创建文档密钥记录失败", e);
             }
         }
 
@@ -129,11 +143,12 @@ public class DocService {
      *
      * @param docId          文档ID
      * @param encryPassword  ECC加密的密码
+     * @param keyVersion     公私钥版本，默认为"default"
      * @return 解密后的密码响应对象
      * @throws RuntimeException 业务异常时抛出
      */
-    public DocPasswordResponse getDocPassword(String docId, String encryPassword) {
-        log.info("[getDocPassword] 开始处理，docId: {}", docId);
+    public DocPasswordResponse getDocPassword(String docId, String encryPassword, String keyVersion) {
+        log.info("[getDocPassword] 开始处理，docId: {}, keyVersion: {}", docId, keyVersion);
 
         // 从Token中获取当前登录用户信息
         String currentAccount = UserContextHolder.getCurrentAccount();
@@ -153,15 +168,20 @@ public class DocService {
             checkUserPermission(docId, currentAccount);
         }
 
+        // 第二步：根据keyVersion和uid查询文档密钥
+        String actualKeyVersion = keyVersion != null && !keyVersion.isEmpty() ? keyVersion : "default";
+        DocSecretKey docSecretKey = docSecretKeyRepository.findByUidAndKeyVersion(docId, actualKeyVersion)
+                .orElseThrow(() -> new RuntimeException("未找到对应的文档密钥，keyVersion: " + actualKeyVersion));
+
         // 使用ECC私钥解密
         try {
-            String password = EccUtil.decrypt(encryPassword, docInfo.getPrivateKey());
+            String password = EccUtil.decrypt(encryPassword, docSecretKey.getPrivateKey());
             
             // 构建响应
             DocPasswordResponse response = new DocPasswordResponse();
             response.setPassword(password);
             
-            log.info("[getDocPassword] 密码获取成功，docId: {}", docId);
+            log.info("[getDocPassword] 密码获取成功，docId: {}, keyVersion: {}", docId, actualKeyVersion);
             return response;
         } catch (RuntimeException e) {
             throw e;
