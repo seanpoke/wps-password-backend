@@ -158,47 +158,57 @@ public class EccUtil {
         // 1. 解码加密数据
         byte[] encryptedData = Base64.getDecoder().decode(encryptedDataBase64);
         
-        // 2. 解析临时公钥长度
+        // 2. 校验数据长度（至少需要4字节的公钥长度头 + 公钥数据 + IV + 密文）
+        if (encryptedData.length < 4) {
+            throw new IllegalArgumentException("加密数据格式错误：数据长度不足");
+        }
+        
+        // 3. 解析临时公钥长度
         int publicKeyLength = ((encryptedData[0] & 0xFF) << 24) |
                               ((encryptedData[1] & 0xFF) << 16) |
                               ((encryptedData[2] & 0xFF) << 8) |
                               (encryptedData[3] & 0xFF);
         
-        // 3. 提取临时公钥
+        // 4. 校验公钥长度的合理性
+        if (publicKeyLength <= 0 || publicKeyLength > encryptedData.length - 4 - 16) {
+            throw new IllegalArgumentException("加密数据格式错误：公钥长度无效");
+        }
+        
+        // 5. 提取临时公钥
         byte[] tempPublicKeyBytes = new byte[publicKeyLength];
         System.arraycopy(encryptedData, 4, tempPublicKeyBytes, 0, publicKeyLength);
         
-        // 4. 提取IV
+        // 6. 提取IV
         byte[] iv = new byte[16];
         System.arraycopy(encryptedData, 4 + publicKeyLength, iv, 0, iv.length);
         
-        // 5. 提取密文
+        // 7. 提取密文
         byte[] ciphertext = new byte[encryptedData.length - 4 - publicKeyLength - iv.length];
         System.arraycopy(encryptedData, 4 + publicKeyLength + iv.length, ciphertext, 0, ciphertext.length);
         
-        // 6. 解析私钥
+        // 8. 解析私钥
         byte[] privateKeyBytes = Base64.getDecoder().decode(privateKeyStr);
         KeyFactory keyFactory = KeyFactory.getInstance(ALGORITHM, PROVIDER);
         PrivateKey privateKey = keyFactory.generatePrivate(
             new java.security.spec.PKCS8EncodedKeySpec(privateKeyBytes)
         );
         
-        // 7. 解析临时公钥
+        // 9. 解析临时公钥
         PublicKey tempPublicKey = keyFactory.generatePublic(
             new java.security.spec.X509EncodedKeySpec(tempPublicKeyBytes)
         );
         
-        // 8. ECDH密钥协商 - 计算共享密钥
+        // 10. ECDH密钥协商 - 计算共享密钥
         KeyAgreement keyAgreement = KeyAgreement.getInstance("ECDH", PROVIDER);
         keyAgreement.init(privateKey);
         keyAgreement.doPhase(tempPublicKey, true);
         byte[] sharedSecret = keyAgreement.generateSecret();
         
-        // 9. 从共享密钥派生AES密钥（使用SHA-256哈希）
+        // 11. 从共享密钥派生AES密钥（使用SHA-256哈希）
         MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
         byte[] aesKeyBytes = sha256.digest(sharedSecret);
         
-        // 10. AES解密
+        // 12. AES解密
         Cipher aesCipher = Cipher.getInstance(AES_ALGORITHM);
         SecretKeySpec aesKeySpec = new SecretKeySpec(aesKeyBytes, "AES");
         IvParameterSpec ivSpec = new IvParameterSpec(iv);

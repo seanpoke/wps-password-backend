@@ -80,22 +80,7 @@ CREATE TABLE IF NOT EXISTS doc_password_log
   COLLATE = utf8mb4_unicode_ci COMMENT ='密码操作日志表';
 
 
--- 如果表存在则先删除
-DROP TABLE IF EXISTS doc_secret_key;
 
-CREATE TABLE IF NOT EXISTS doc_secret_key
-(
-    id          BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键 ID',
-    uid         VARCHAR(64) NOT NULL COMMENT '文件唯一标识',
-    public_key  TEXT        NOT NULL COMMENT '公钥',
-    private_key TEXT        NOT NULL COMMENT '私钥',
-    key_version VARCHAR(50) NOT NULL COMMENT '密钥版本',
-    create_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    UNIQUE INDEX idx_uid_key_version (uid, key_version),
-    INDEX idx_create_time (create_time)
-) ENGINE = InnoDB
-  DEFAULT CHARSET = utf8mb4
-  COLLATE = utf8mb4_unicode_ci COMMENT ='文档密钥表';
 
 
 -- 如果表存在则先删除

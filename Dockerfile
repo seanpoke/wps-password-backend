@@ -42,12 +42,12 @@ USER appuser
 # 暴露应用端口
 EXPOSE 8081
 
-ENV JAVA_OPTS="-Xms2g -Xmx2g -XX:NewRatio=1 -XX:SurvivorRatio=8 -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=4m -XX:ConcGCThreads=2 -XX:G1ReservePercent=10 -XX:InitiatingHeapOccupancyPercent=45 -XX:+UseStringDeduplication -XX:+ParallelRefProcEnabled -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/app/logs/heapdump.hprof"
+ENV JAVA_OPTS="-Xms256m -Xmx256m -XX:NewRatio=1 -XX:SurvivorRatio=8 -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=4m -XX:ConcGCThreads=2 -XX:G1ReservePercent=10 -XX:InitiatingHeapOccupancyPercent=45 -XX:+UseStringDeduplication -XX:+ParallelRefProcEnabled -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/app/logs/heapdump.hprof"
 ENV SPRING_CONFIG_LOCATION="file:/app/config/application.yml,file:/app/config/application-prod.yml"
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/actuator/health || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8081/actuator/health || exit 1
 
 # 启动应用
 # Spring Boot会按以下优先级加载配置：
