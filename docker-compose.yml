@@ -16,12 +16,15 @@ services:
     environment:
       - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-prod}
       - BUSI_OUTER_IP=${BUSI_OUTER_IP:-mysql8}
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql8:3306/${MYSQL_DATABASE:-mydb}?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql8:3306/${MYSQL_DATABASE:-doc_auth_system}?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
       - SPRING_DATASOURCE_USERNAME=${MYSQL_USER:-testuser}
       - SPRING_DATASOURCE_PASSWORD=${MYSQL_PASSWORD:-test123456}
       - SPRING_REDIS_HOST=redis
       - SPRING_REDIS_PORT=6379
       - SPRING_REDIS_PASSWORD=${REDIS_PASSWORD:-sean1234}
+      - MYSQL_USER=${MYSQL_USER:-testuser}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-test123456}
+      - REDIS_HOST=redis
     volumes:
       - ./config:/app/config:ro
       - ./logs:/app/logs
@@ -40,7 +43,7 @@ services:
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123456}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-mydb}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-doc_auth_system}
       MYSQL_USER: ${MYSQL_USER:-testuser}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-test123456}
       TZ: Asia/Shanghai
