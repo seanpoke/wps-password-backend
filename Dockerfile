@@ -21,6 +21,11 @@ FROM eclipse-temurin:17-jre-alpine
 LABEL maintainer="Sean"
 LABEL description="wps插件后端服务"
 
+# 安装中文语言包和UTF-8支持
+RUN apk add --no-cache gcompat libc6-compat && \
+    apk add --no-cache ttf-dejavu fontconfig && \
+    fc-cache -fv
+
 # 设置工作目录
 WORKDIR /app
 

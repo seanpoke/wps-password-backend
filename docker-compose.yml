@@ -25,6 +25,8 @@ services:
       - MYSQL_USER=${MYSQL_USER:-testuser}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD:-test123456}
       - REDIS_HOST=redis
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
     volumes:
       - ./config:/app/config:ro
       - ./logs:/app/logs
