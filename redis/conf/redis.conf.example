@@ -1,0 +1,49 @@
+# Redis 配置文件示例
+# 将此文件复制到 ./redis/conf/redis.conf
+
+# 绑定地址（Docker内部网络）
+bind 0.0.0.0
+
+# 端口
+port 6379
+
+# 保护模式
+protected-mode yes
+
+# 密码（通过docker-compose的command参数设置，这里可以留空）
+# requirepass sean1234
+
+# 持久化配置
+save 900 1
+save 300 10
+save 60 10000
+
+# RDB文件名
+dbfilename dump.rdb
+
+# 工作目录
+dir /data
+
+# 最大内存限制（建议设置）
+maxmemory 256mb
+
+# 内存淘汰策略
+maxmemory-policy allkeys-lru
+
+# 日志级别
+loglevel notice
+
+# 日志文件（空字符串表示输出到stdout）
+logfile ""
+
+# TCP连接 backlog
+tcp-backlog 511
+
+# 超时时间（秒）
+timeout 0
+
+# TCP keepalive
+tcp-keepalive 300
+
+# 数据库数量
+databases 16

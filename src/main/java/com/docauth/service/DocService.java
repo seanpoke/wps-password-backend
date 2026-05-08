@@ -7,12 +7,12 @@ import com.docauth.dto.LdapNodeDTO;
 import com.docauth.entity.ConfigSecretKey;
 import com.docauth.entity.DocInfo;
 import com.docauth.entity.DocPasswordLog;
-import com.docauth.entity.DocSecretKey;
+
 import com.docauth.entity.DocShareRel;
 import com.docauth.repository.ConfigSecretKeyRepository;
 import com.docauth.repository.DocInfoRepository;
 import com.docauth.repository.DocOperateLogRepository;
-import com.docauth.repository.DocSecretKeyRepository;
+
 import com.docauth.repository.DocShareRelRepository;
 import com.docauth.util.EccUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -43,8 +43,6 @@ public class DocService {
     @Autowired
     private DocOperateLogRepository docOperateLogRepository;
 
-    @Autowired
-    private DocSecretKeyRepository docSecretKeyRepository;
 
     @Autowired
     private ConfigSecretKeyRepository configSecretKeyRepository;
@@ -89,35 +87,16 @@ public class DocService {
             docInfo.setName(name != null ? name : account);
             docInfo.setCreateBy(account);
             docInfoRepository.save(docInfo);
-            
+
             log.info("[getDocOwner] 创建新文档记录，docId: {}, owner: {}", docId, account);
-            
-            // 查询最新的配置密钥并插入到doc_secret_key中
-            try {
-                ConfigSecretKey latestConfigKey = configSecretKeyRepository.findFirstByOrderByOrderNumDesc()
-                        .orElseThrow(() -> new RuntimeException("系统配置错误：未找到配置密钥"));
-                
-                // 创建文档密钥记录
-                DocSecretKey docSecretKey = new DocSecretKey();
-                docSecretKey.setUid(docId);
-                docSecretKey.setPublicKey(latestConfigKey.getPublicKey());
-                docSecretKey.setPrivateKey(latestConfigKey.getPrivateKey());
-                docSecretKey.setKeyVersion(latestConfigKey.getKeyVersion());
-                docSecretKeyRepository.save(docSecretKey);
-                
-                log.info("[getDocOwner] 为文档创建密钥记录，docId: {}, keyVersion: {}", docId, latestConfigKey.getKeyVersion());
-            } catch (RuntimeException e) {
-                throw e;
-            } catch (Exception e) {
-                log.error("[getDocOwner] 创建文档密钥记录失败: {}", e.getMessage(), e);
-                throw new RuntimeException("创建文档密钥记录失败", e);
-            }
+
+
         }
 
         // 判断当前用户的读写权限
         boolean readAuth = false;
         boolean writeAuth = false;
-        
+
         // 如果当前用户是文档所有者，则同时拥有读写权限
         if (docInfo.getAccount().equals(currentAccount)) {
             readAuth = true;
@@ -141,9 +120,9 @@ public class DocService {
     /**
      * 获取文档密码
      *
-     * @param docId          文档ID
-     * @param encryPassword  ECC加密的密码
-     * @param keyVersion     公私钥版本，默认为"default"
+     * @param docId         文档ID
+     * @param encryPassword ECC加密的密码
+     * @param keyVersion    公私钥版本，默认为"default"
      * @return 解密后的密码响应对象
      * @throws RuntimeException 业务异常时抛出
      */
@@ -168,20 +147,20 @@ public class DocService {
             checkUserPermission(docId, currentAccount);
         }
 
-        // 第二步：根据keyVersion和uid查询文档密钥
+        // 第二步：根据keyVersion从ConfigSecretKey中获取私钥
         String actualKeyVersion = keyVersion != null && !keyVersion.isEmpty() ? keyVersion : "default";
-        DocSecretKey docSecretKey = docSecretKeyRepository.findByUidAndKeyVersion(docId, actualKeyVersion)
-                .orElseThrow(() -> new RuntimeException("未找到对应的文档密钥，keyVersion: " + actualKeyVersion));
+        ConfigSecretKey configSecretKey = configSecretKeyRepository.findByKeyVersion(actualKeyVersion)
+                .orElseThrow(() -> new RuntimeException("未找到对应的配置密钥，keyVersion: " + actualKeyVersion));
 
         // 使用ECC私钥解密
         try {
-            String password = EccUtil.decrypt(encryPassword, docSecretKey.getPrivateKey());
-            
+            String password = EccUtil.decrypt(encryPassword, configSecretKey.getPrivateKey());
+
             // 构建响应
             DocPasswordResponse response = new DocPasswordResponse();
             response.setPassword(password);
-            
-            log.info("[getDocPassword] 密码获取成功，docId: {}, keyVersion: {}", docId, actualKeyVersion);
+
+            log.info("[getDocPassword] 密码获取成功，docId: {}, keyVersion: {}, 用户：{}", docId, actualKeyVersion, currentAccount);
             return response;
         } catch (RuntimeException e) {
             throw e;
@@ -194,7 +173,7 @@ public class DocService {
     /**
      * 检查用户对文档的访问权限
      *
-     * @param docId         文档ID
+     * @param docId          文档ID
      * @param currentAccount 当前用户账号
      */
     private void checkUserPermission(String docId, String currentAccount) {
@@ -206,7 +185,7 @@ public class DocService {
     /**
      * 判断用户对文档是否有访问权限（不抛异常，返回boolean）
      *
-     * @param docId         文档ID
+     * @param docId          文档ID
      * @param currentAccount 当前用户账号
      * @return 是否有权限
      */
@@ -332,16 +311,16 @@ public class DocService {
     /**
      * 保存操作日志
      *
-     * @param docId           文档ID
-     * @param path            文件路径
-     * @param beforePassword  修改前密码
-     * @param afterPassword   修改后密码
+     * @param docId                文档ID
+     * @param path                 文件路径
+     * @param beforePassword       修改前密码
+     * @param afterPassword        修改后密码
      * @param possiblePasswordList 可能的密码集合
-     * @param platform        操作来源平台
+     * @param platform             操作来源平台
      * @throws RuntimeException 业务异常时抛出
      */
-    public void saveLog(String docId, String path, String beforePassword, 
-                       String afterPassword, List<String> possiblePasswordList, String platform) {
+    public void saveLog(String docId, String path, String beforePassword,
+                        String afterPassword, List<String> possiblePasswordList, String platform) {
         log.info("[saveLog] 开始处理，docId: {}, path: {}", docId, path);
 
         // 从Token中获取当前登录用户信息
@@ -383,7 +362,7 @@ public class DocService {
                 .withMatcher("platform", ExampleMatcher.GenericPropertyMatchers.exact())
                 .withMatcher("createBy", ExampleMatcher.GenericPropertyMatchers.exact())
                 .withIgnorePaths("id", "createTime", "updateTime", "updateBy");
-        
+
         DocPasswordLog queryLog = new DocPasswordLog();
         queryLog.setUid(docId);
         queryLog.setPath(path);
@@ -392,10 +371,10 @@ public class DocService {
         queryLog.setPossiblePassword(jsonPassword);
         queryLog.setPlatform(platform);
         queryLog.setCreateBy(currentAccount);
-        
+
         Example<DocPasswordLog> example = Example.of(queryLog, matcher);
         Optional<DocPasswordLog> existingLogOpt = docOperateLogRepository.findOne(example);
-        
+
         if (existingLogOpt.isPresent()) {
             // 如果存在，手动更新updateTime
             DocPasswordLog existingLog = existingLogOpt.get();
@@ -412,9 +391,9 @@ public class DocService {
     /**
      * 创建并保存新的日志记录
      */
-    private void saveNewLog(String docId, String createBy, String path, 
-                           String beforePassword, String afterPassword, 
-                           String possiblePassword, String platform) {
+    private void saveNewLog(String docId, String createBy, String path,
+                            String beforePassword, String afterPassword,
+                            String possiblePassword, String platform) {
         DocPasswordLog passwordLog = new DocPasswordLog();
         passwordLog.setUid(docId);
         passwordLog.setCreateBy(createBy);
