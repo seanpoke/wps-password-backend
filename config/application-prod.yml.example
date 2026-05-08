@@ -4,7 +4,7 @@
 spring:
   datasource:
     # 使用 busi.outer-ip 变量，可以通过环境变量 BUSI_OUTER_IP 覆盖
-    url: jdbc:mysql://${busi.outer-ip}:3306/doc_auth_system?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&maxAllowedPacket=10485760
+    url: jdbc:mysql://${busi.outer-ip}:3306/doc_auth_system?useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&useSSL=false&serverTimezone=Asia/Shanghai&maxAllowedPacket=10485760
     username: root
     password: your-database-password
     driver-class-name: com.mysql.cj.jdbc.Driver
