@@ -43,7 +43,7 @@ USER appuser
 EXPOSE 8081
 
 ENV JAVA_OPTS="-Xms256m -Xmx256m -XX:NewRatio=1 -XX:SurvivorRatio=8 -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=4m -XX:ConcGCThreads=2 -XX:G1ReservePercent=10 -XX:InitiatingHeapOccupancyPercent=45 -XX:+UseStringDeduplication -XX:+ParallelRefProcEnabled -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/app/logs/heapdump.hprof"
-ENV SPRING_CONFIG_LOCATION="file:/app/config/application.yml,file:/app/config/application-prod.yml"
+ENV SPRING_CONFIG_LOCATION="file:/app/config/application-prod.yml"
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
