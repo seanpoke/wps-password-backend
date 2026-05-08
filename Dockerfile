@@ -29,7 +29,7 @@ ENV LC_ALL=C.UTF-8
 WORKDIR /app
 
 # 创建非root用户运行应用（安全最佳实践）
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+RUN groupadd -r appgroup && useradd -r -g appgroup -m appuser
 
 # 创建外部配置目录和日志目录
 RUN mkdir -p /app/config /app/logs
