@@ -137,19 +137,21 @@ public class DocController {
     @PostMapping("/save/log")
     @Operation(summary = "保存操作日志", description = "记录文档密码修改等操作日志")
     public ApiResponse<?> saveLog(@RequestBody SaveLogRequest request) {
-        log.info("[saveLog] 请求参数: docId={}, path={}", request.getDocId(), request.getPath());
+        log.info("[saveLog] 请求参数: docId={}, path={}, keyVersion={}", request.getDocId(), request.getPath(), request.getKeyVersion());
 
         // 校验参数非空
         if (request.getDocId() == null || request.getDocId().isEmpty() ||
-                request.getPath() == null || request.getPath().isEmpty()) {
-            return ApiResponse.error(400, "参数错误：docId和path不能为空");
+                request.getPath() == null || request.getPath().isEmpty() ||
+                request.getKeyVersion() == null || request.getKeyVersion().isEmpty()) {
+            return ApiResponse.error(400, "参数错误：docId、path和keyVersion不能为空");
         }
 
         try {
-            // 调用Service处理业务逻辑
+            // 调用Service处理业务逻辑，传入加密的密码和keyVersion
             docService.saveLog(
                 request.getDocId(),
                 request.getPath(),
+                request.getKeyVersion(),
                 request.getBeforePassword(),
                 request.getAfterPassword(),
                 request.getPossiblePasword(),

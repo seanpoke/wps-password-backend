@@ -309,82 +309,162 @@ public class DocService {
     }
 
     /**
-     * 保存操作日志
+     * 保存操作日志（异步入口）
      *
      * @param docId                文档ID
      * @param path                 文件路径
-     * @param beforePassword       修改前密码
-     * @param afterPassword        修改后密码
-     * @param possiblePasswordList 可能的密码集合
+     * @param keyVersion           密钥版本号
+     * @param beforePassword       修改前密码（加密）
+     * @param afterPassword        修改后密码（加密）
+     * @param possiblePasswordList 可能的密码集合（加密）
      * @param platform             操作来源平台
-     * @throws RuntimeException 业务异常时抛出
      */
-    public void saveLog(String docId, String path, String beforePassword,
+    public void saveLog(String docId, String path, String keyVersion, String beforePassword,
                         String afterPassword, List<String> possiblePasswordList, String platform) {
-        log.info("[saveLog] 开始处理，docId: {}, path: {}", docId, path);
+        log.info("[saveLog] 接收请求，docId: {}, path: {}, keyVersion: {}", docId, path, keyVersion);
 
-        // 从Token中获取当前登录用户信息
+        // 从Token中获取当前登录用户信息（在主线程中捕获）
         String currentAccount = UserContextHolder.getCurrentAccount();
         if (currentAccount == null || currentAccount.isEmpty()) {
             currentAccount = "UNKNOW";
         }
 
-        // 对possiblePasswordList进行自然排序
-        if (possiblePasswordList != null && !possiblePasswordList.isEmpty()) {
-            possiblePasswordList.sort(String.CASE_INSENSITIVE_ORDER);
-            log.info("[saveLog] 密码列表已自然排序，数量: {}", possiblePasswordList.size());
-        }
+        // 异步执行解密和保存操作
+        asyncSaveLog(docId, path, keyVersion, beforePassword, afterPassword, 
+                    possiblePasswordList, platform, currentAccount);
+        
+        log.info("[saveLog] 请求已提交到异步线程，docId: {}", docId);
+    }
 
-        // 将可能的密码集合转换为JSON字符串存储
-        String jsonPassword = null;
-        if (possiblePasswordList != null && !possiblePasswordList.isEmpty()) {
-            try {
-                jsonPassword = objectMapper.writeValueAsString(possiblePasswordList);
-            } catch (Exception e) {
-                log.error("[saveLog] 转换密码集合为JSON失败: {}", e.getMessage(), e);
+    /**
+     * 异步保存操作日志
+     *
+     * @param docId                文档ID
+     * @param path                 文件路径
+     * @param keyVersion           密钥版本号
+     * @param beforePassword       修改前密码（加密）
+     * @param afterPassword        修改后密码（加密）
+     * @param possiblePasswordList 可能的密码集合（加密）
+     * @param platform             操作来源平台
+     * @param currentAccount       当前用户账号（从主线程传递）
+     */
+    @org.springframework.scheduling.annotation.Async("logSaveExecutor")
+    public void asyncSaveLog(String docId, String path, String keyVersion, String beforePassword,
+                              String afterPassword, List<String> possiblePasswordList, 
+                              String platform, String currentAccount) {
+        log.info("[asyncSaveLog] 开始异步处理，docId: {}, path: {}, keyVersion: {}, user: {}", 
+                docId, path, keyVersion, currentAccount);
+
+        try {
+
+            // 根据keyVersion从ConfigSecretKey中获取私钥
+            String actualKeyVersion = keyVersion != null && !keyVersion.isEmpty() ? keyVersion : "default";
+            ConfigSecretKey configSecretKey = configSecretKeyRepository.findByKeyVersion(actualKeyVersion)
+                    .orElseThrow(() -> new RuntimeException("未找到对应的配置密钥，keyVersion: " + actualKeyVersion));
+
+            // 使用ECC私钥解密beforePassword
+            String decryptedBeforePassword = null;
+            if (beforePassword != null && !beforePassword.isEmpty()) {
+                try {
+                    decryptedBeforePassword = EccUtil.decrypt(beforePassword, configSecretKey.getPrivateKey());
+                    log.info("[asyncSaveLog] beforePassword解密成功");
+                } catch (Exception e) {
+                    log.error("[asyncSaveLog] beforePassword解密失败: {}", e.getMessage(), e);
+                    throw new RuntimeException("beforePassword解密失败", e);
+                }
             }
-        }
 
-        // 如果当前用户是UNKNOW，直接插入数据
-        if ("UNKNOW".equals(currentAccount)) {
-            saveNewLog(docId, currentAccount, path, beforePassword, afterPassword, jsonPassword, platform);
-            log.info("[saveLog] UNKNOW用户，日志直接插入成功，docId: {}", docId);
-            return;
-        }
+            // 使用ECC私钥解密afterPassword
+            String decryptedAfterPassword = null;
+            if (afterPassword != null && !afterPassword.isEmpty()) {
+                try {
+                    decryptedAfterPassword = EccUtil.decrypt(afterPassword, configSecretKey.getPrivateKey());
+                    log.info("[asyncSaveLog] afterPassword解密成功");
+                } catch (Exception e) {
+                    log.error("[asyncSaveLog] afterPassword解密失败: {}", e.getMessage(), e);
+                    throw new RuntimeException("afterPassword解密失败", e);
+                }
+            }
 
-        // 普通用户：根据uid、path、beforePassword、afterPassword、possiblePassword、platform、createBy查询数据是否存在
-        ExampleMatcher matcher = ExampleMatcher.matching()
-                .withMatcher("uid", ExampleMatcher.GenericPropertyMatchers.exact())
-                .withMatcher("path", ExampleMatcher.GenericPropertyMatchers.exact())
-                .withMatcher("beforePassword", ExampleMatcher.GenericPropertyMatchers.exact())
-                .withMatcher("afterPassword", ExampleMatcher.GenericPropertyMatchers.exact())
-                .withMatcher("possiblePassword", ExampleMatcher.GenericPropertyMatchers.exact())
-                .withMatcher("platform", ExampleMatcher.GenericPropertyMatchers.exact())
-                .withMatcher("createBy", ExampleMatcher.GenericPropertyMatchers.exact())
-                .withIgnorePaths("id", "createTime", "updateTime", "updateBy");
+            // 使用ECC私钥解密possiblePasswordList中的每个密码
+            List<String> decryptedPossiblePasswordList = null;
+            if (possiblePasswordList != null && !possiblePasswordList.isEmpty()) {
+                decryptedPossiblePasswordList = new ArrayList<>();
+                for (int i = 0; i < possiblePasswordList.size(); i++) {
+                    String encryptedPassword = possiblePasswordList.get(i);
+                    if (encryptedPassword != null && !encryptedPassword.isEmpty()) {
+                        try {
+                            String decryptedPassword = EccUtil.decrypt(encryptedPassword, configSecretKey.getPrivateKey());
+                            decryptedPossiblePasswordList.add(decryptedPassword);
+                        } catch (Exception e) {
+                            log.error("[asyncSaveLog] possiblePasswordList[{}]解密失败: {}", i, e.getMessage(), e);
+                            throw new RuntimeException("possiblePasswordList第" + (i + 1) + "个密码解密失败", e);
+                        }
+                    }
+                }
+                log.info("[asyncSaveLog] possiblePasswordList解密成功，数量: {}", decryptedPossiblePasswordList.size());
+            }
 
-        DocPasswordLog queryLog = new DocPasswordLog();
-        queryLog.setUid(docId);
-        queryLog.setPath(path);
-        queryLog.setBeforePassword(beforePassword);
-        queryLog.setAfterPassword(afterPassword);
-        queryLog.setPossiblePassword(jsonPassword);
-        queryLog.setPlatform(platform);
-        queryLog.setCreateBy(currentAccount);
+            // 对解密后的possiblePasswordList进行自然排序
+            if (decryptedPossiblePasswordList != null && !decryptedPossiblePasswordList.isEmpty()) {
+                decryptedPossiblePasswordList.sort(String.CASE_INSENSITIVE_ORDER);
+                log.info("[asyncSaveLog] 密码列表已自然排序，数量: {}", decryptedPossiblePasswordList.size());
+            }
 
-        Example<DocPasswordLog> example = Example.of(queryLog, matcher);
-        Optional<DocPasswordLog> existingLogOpt = docOperateLogRepository.findOne(example);
+            // 将解密后的可能的密码集合转换为JSON字符串存储
+            String jsonPassword = null;
+            if (decryptedPossiblePasswordList != null && !decryptedPossiblePasswordList.isEmpty()) {
+                try {
+                    jsonPassword = objectMapper.writeValueAsString(decryptedPossiblePasswordList);
+                } catch (Exception e) {
+                    log.error("[asyncSaveLog] 转换密码集合为JSON失败: {}", e.getMessage(), e);
+                }
+            }
 
-        if (existingLogOpt.isPresent()) {
-            // 如果存在，手动更新updateTime
-            DocPasswordLog existingLog = existingLogOpt.get();
-            existingLog.setUpdateTime(new java.util.Date());
-            docOperateLogRepository.save(existingLog);
-            log.info("[saveLog] 日志已存在，仅更新updateTime，docId: {}", docId);
-        } else {
-            // 如果不存在，创建新的日志记录
-            saveNewLog(docId, currentAccount, path, beforePassword, afterPassword, jsonPassword, platform);
-            log.info("[saveLog] 日志保存成功，docId: {}", docId);
+            // 如果当前用户是UNKNOW，直接插入数据
+            if ("UNKNOW".equals(currentAccount)) {
+                saveNewLog(docId, currentAccount, path, decryptedBeforePassword, decryptedAfterPassword, jsonPassword, platform);
+                log.info("[asyncSaveLog] UNKNOW用户，日志直接插入成功，docId: {}", docId);
+                return;
+            }
+
+            // 普通用户：根据uid、path、beforePassword、afterPassword、possiblePassword、platform、createBy查询数据是否存在
+            ExampleMatcher matcher = ExampleMatcher.matching()
+                    .withMatcher("uid", ExampleMatcher.GenericPropertyMatchers.exact())
+                    .withMatcher("path", ExampleMatcher.GenericPropertyMatchers.exact())
+                    .withMatcher("beforePassword", ExampleMatcher.GenericPropertyMatchers.exact())
+                    .withMatcher("afterPassword", ExampleMatcher.GenericPropertyMatchers.exact())
+                    .withMatcher("possiblePassword", ExampleMatcher.GenericPropertyMatchers.exact())
+                    .withMatcher("platform", ExampleMatcher.GenericPropertyMatchers.exact())
+                    .withMatcher("createBy", ExampleMatcher.GenericPropertyMatchers.exact())
+                    .withIgnorePaths("id", "createTime", "updateTime", "updateBy");
+
+            DocPasswordLog queryLog = new DocPasswordLog();
+            queryLog.setUid(docId);
+            queryLog.setPath(path);
+            queryLog.setBeforePassword(decryptedBeforePassword);
+            queryLog.setAfterPassword(decryptedAfterPassword);
+            queryLog.setPossiblePassword(jsonPassword);
+            queryLog.setPlatform(platform);
+            queryLog.setCreateBy(currentAccount);
+
+            Example<DocPasswordLog> example = Example.of(queryLog, matcher);
+            Optional<DocPasswordLog> existingLogOpt = docOperateLogRepository.findOne(example);
+
+            if (existingLogOpt.isPresent()) {
+                // 如果存在，手动更新updateTime
+                DocPasswordLog existingLog = existingLogOpt.get();
+                existingLog.setUpdateTime(new java.util.Date());
+                docOperateLogRepository.save(existingLog);
+                log.info("[asyncSaveLog] 日志已存在，仅更新updateTime，docId: {}", docId);
+            } else {
+                // 如果不存在，创建新的日志记录
+                saveNewLog(docId, currentAccount, path, decryptedBeforePassword, decryptedAfterPassword, jsonPassword, platform);
+                log.info("[asyncSaveLog] 日志保存成功，docId: {}", docId);
+            }
+        } catch (Exception e) {
+            log.error("[asyncSaveLog] 异步保存日志失败，docId: {}, error: {}", docId, e.getMessage(), e);
+            // 异步方法中的异常不会影响主流程，只记录日志
         }
     }
 
