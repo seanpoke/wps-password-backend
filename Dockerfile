@@ -15,16 +15,15 @@ COPY src ./src
 RUN mvn clean package -DskipTests -B
 
 # 多阶段构建 - 第二阶段：运行
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:17-jre
 
 # 设置维护者信息
 LABEL maintainer="Sean"
 LABEL description="wps插件后端服务"
 
-# 安装中文语言包和UTF-8支持
-RUN apk add --no-cache gcompat libc6-compat && \
-    apk add --no-cache ttf-dejavu fontconfig && \
-    fc-cache -fv
+# 设置locale支持UTF-8
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
 
 # 设置工作目录
 WORKDIR /app
@@ -32,11 +31,11 @@ WORKDIR /app
 # 创建非root用户运行应用（安全最佳实践）
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
+# 创建外部配置目录和日志目录
+RUN mkdir -p /app/config /app/logs
+
 # 从builder阶段复制构建好的jar包
 COPY --from=builder /app/target/wps-password-backend-1.0.0.jar app.jar
-
-# 创建外部配置目录和日志目录
-RUN mkdir -p /app/config /app/logs && chown -R appuser:appgroup /app/config /app/logs
 
 # 修改文件所有者
 RUN chown -R appuser:appgroup /app
