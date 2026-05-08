@@ -2,7 +2,7 @@
 <configuration scan="true" scanPeriod="60 seconds" debug="false">
     
     <!-- 定义日志文件存储路径 -->
-    <property name="LOG_HOME" value="/app/logs"/>
+    <property name="LOG_HOME" value="./logs"/>
     <!-- 定义应用名称 -->
     <property name="APP_NAME" value="wps-password-backend"/>
     
