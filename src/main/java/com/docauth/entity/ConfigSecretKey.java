@@ -2,7 +2,6 @@ package com.docauth.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
-import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
@@ -12,26 +11,20 @@ import java.time.LocalDateTime;
  */
 @Data
 @Entity
-@Table(name = "config_secret_key")
 public class ConfigSecretKey {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "public_key", nullable = false, columnDefinition = "text")
     private String publicKey;
 
-    @Column(name = "private_key", nullable = false, columnDefinition = "text")
     private String privateKey;
 
-    @Column(name = "key_version", nullable = false, unique = true, length = 50)
     private String keyVersion;
 
-    @Column(name = "order_num", nullable = false, unique = true)
     private Integer orderNum;
 
-    @CreationTimestamp
-    @Column(name = "create_time", nullable = false, updatable = false)
+    @Column(insertable = false, updatable = false)
     private LocalDateTime createTime;
 }

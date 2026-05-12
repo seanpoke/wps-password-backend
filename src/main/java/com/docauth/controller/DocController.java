@@ -154,7 +154,7 @@ public class DocController {
                 request.getKeyVersion(),
                 request.getBeforePassword(),
                 request.getAfterPassword(),
-                request.getPossiblePasword(),
+                request.getPossiblePassword(),
                 request.getPlatform()
             );
             return ApiResponse.success("操作成功");

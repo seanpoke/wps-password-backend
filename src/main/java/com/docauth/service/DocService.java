@@ -452,11 +452,11 @@ public class DocService {
             Optional<DocPasswordLog> existingLogOpt = docOperateLogRepository.findOne(example);
 
             if (existingLogOpt.isPresent()) {
-                // 如果存在，手动更新updateTime
+                // 如果存在，设置updateBy并触发save以让数据库的ON UPDATE CURRENT_TIMESTAMP生效
                 DocPasswordLog existingLog = existingLogOpt.get();
-                existingLog.setUpdateTime(new java.util.Date());
+                existingLog.setUpdateBy(currentAccount);
                 docOperateLogRepository.save(existingLog);
-                log.info("[asyncSaveLog] 日志已存在，仅更新updateTime，docId: {}", docId);
+                log.info("[asyncSaveLog] 日志已存在，updateTime和updateBy由数据库自动更新，docId: {}", docId);
             } else {
                 // 如果不存在，创建新的日志记录
                 saveNewLog(docId, currentAccount, path, decryptedBeforePassword, decryptedAfterPassword, jsonPassword, platform);
@@ -478,6 +478,17 @@ public class DocService {
         passwordLog.setUid(docId);
         passwordLog.setCreateBy(createBy);
         passwordLog.setPath(path);
+        
+        // 从path中提取文件名
+        if (path != null && !path.isEmpty()) {
+            int lastSlashIndex = path.lastIndexOf('/');
+            if (lastSlashIndex == -1) {
+                lastSlashIndex = path.lastIndexOf('\\');
+            }
+            String fileName = (lastSlashIndex != -1) ? path.substring(lastSlashIndex + 1) : path;
+            passwordLog.setFileName(fileName);
+        }
+        
         passwordLog.setBeforePassword(beforePassword);
         passwordLog.setAfterPassword(afterPassword);
         passwordLog.setPossiblePassword(possiblePassword);
