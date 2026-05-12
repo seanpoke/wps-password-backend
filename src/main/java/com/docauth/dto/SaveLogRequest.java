@@ -23,7 +23,7 @@ public class SaveLogRequest {
     private String afterPassword;
     
     @Schema(description = "可能的密码列表（加密）")
-    private List<String> possiblePasword;
+    private List<String> possiblePassword;
     
     @Schema(description = "操作来源平台", example = "win、android")
     private String platform;

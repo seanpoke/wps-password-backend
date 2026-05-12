@@ -1,11 +1,11 @@
 # 外部配置文件（包含敏感信息）
 config/application-prod.yml
 config/application-*.yml
-!config/application-prod.yml.example
+!ci/conf/application-prod.yml.example
 
 # Docker Compose 环境变量文件（包含敏感信息）
 .env
-!.env.example
+!ci/conf/.env.example
 
 # 日志文件
 logs/
