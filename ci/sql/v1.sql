@@ -1,6 +1,6 @@
 USE doc_auth_system;
 
--- 新增 file_name 字段
+-- 新增 file_name 字段到 doc_password_log 表
 ALTER TABLE doc_password_log ADD COLUMN file_name VARCHAR(255) COMMENT '文件名' after uid;
 
 -- 为已有数据填充 file_name（从 path 截取最后的文件名）
@@ -29,3 +29,10 @@ ALTER TABLE doc_share_rel
 ALTER TABLE doc_password_log
     MODIFY COLUMN create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     MODIFY COLUMN update_time DATETIME DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
+
+
+-- 为 doc_info 表新增 file_name 字段
+ALTER TABLE doc_info ADD COLUMN file_name VARCHAR(255) DEFAULT NULL COMMENT '文件名' AFTER uid;
+
+-- 移除 doc_info 表的 update_time 和 update_by 字段
+ALTER TABLE doc_info DROP COLUMN update_time, DROP COLUMN update_by;

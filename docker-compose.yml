@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # --- 1. Spring Boot 应用 ---
   wps-app:
@@ -7,30 +5,24 @@ services:
     container_name: wps_app_container
     restart: always
     ports:
-      - "${APP_PORT:-8081}:${APP_PORT:-8081}"
+      - "8081:8081"
     depends_on:
       mysql8:
         condition: service_healthy
       redis:
         condition: service_started
     environment:
-      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-prod}
-      - BUSI_OUTER_IP=${BUSI_OUTER_IP:-mysql8}
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql8:3306/${MYSQL_DATABASE:-doc_auth_system}?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
-      - SPRING_DATASOURCE_USERNAME=${MYSQL_USER:-testuser}
-      - SPRING_DATASOURCE_PASSWORD=${MYSQL_PASSWORD:-test123456}
-      - SPRING_REDIS_HOST=redis
-      - SPRING_REDIS_PORT=6379
-      - SPRING_REDIS_PASSWORD=${REDIS_PASSWORD:-sean1234}
-      - MYSQL_USER=${MYSQL_USER:-testuser}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-test123456}
+      - MYSQL_HOST=mysql8
+      - MYSQL_PORT=3306
+      - MYSQL_USER=testuser
+      - MYSQL_PASSWORD=test123456
       - REDIS_HOST=redis
-      - LANG=C.UTF-8
-      - LC_ALL=C.UTF-8
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=sean1234
       - TZ=Asia/Shanghai
     volumes:
-      - ./config:/app/config:ro
       - ./logs:/app/logs
+      - /etc/localtime:/etc/localtime:ro
     networks:
       - wps_network
     logging:
@@ -45,26 +37,27 @@ services:
     container_name: mysql8_container
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123456}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-doc_auth_system}
-      MYSQL_USER: ${MYSQL_USER:-testuser}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-test123456}
+      MYSQL_ROOT_PASSWORD: root123456
+      MYSQL_DATABASE: doc_auth_system
+      MYSQL_USER: testuser
+      MYSQL_PASSWORD: test123456
       TZ: Asia/Shanghai
       MYSQL_CHARACTER_SET_SERVER: utf8mb4
       MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
     ports:
-      - "${MYSQL_PORT:-3316}:3306"
+      - "3316:3306"
     volumes:
       - mysql8_data:/var/lib/mysql
       - ./mysql/conf:/etc/mysql/conf.d:ro
       - ./mysql/init:/docker-entrypoint-initdb.d:ro
+      - /etc/localtime:/etc/localtime:ro
     networks:
       - wps_network
     command:
       - --default-authentication-plugin=mysql_native_password
       - --sql-mode=STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root123456}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot123456"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -83,7 +76,7 @@ services:
     environment:
       TZ: Asia/Shanghai
     ports:
-      - "${REDIS_PORT:-6479}:6379"
+      - "6479:6379"
     volumes:
       - redis_data:/data
       - ./redis/conf/redis.conf:/etc/redis/redis.conf:ro
@@ -91,9 +84,9 @@ services:
       - wps_network
     command: >
       redis-server /etc/redis/redis.conf
-      --requirepass ${REDIS_PASSWORD:-sean1234}
+      --requirepass sean1234
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-sean1234}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "sean1234", "ping"]
       interval: 10s
       timeout: 3s
       retries: 3

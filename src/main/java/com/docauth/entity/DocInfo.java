@@ -16,14 +16,11 @@ public class DocInfo {
     private String account;
 
     private String name;
+
+    private String fileName;
     
     @Column(insertable = false, updatable = false)
     private LocalDateTime createTime;
     
     private String createBy;
-    
-    @Column(insertable = false, updatable = false)
-    private LocalDateTime updateTime;
-    
-    private String updateBy;
 }

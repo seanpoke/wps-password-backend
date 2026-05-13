@@ -2,6 +2,18 @@ CREATE DATABASE IF NOT EXISTS doc_auth_system
     CHARACTER SET utf8mb4
     COLLATE utf8mb4_unicode_ci;
 
+-- 如果用户不存在，先创建用户
+CREATE USER IF NOT EXISTS 'testuser'@'%' IDENTIFIED BY 'test123456';
+
+-- 授予用户对 doc_auth_system 数据库的所有权限
+GRANT ALL PRIVILEGES ON doc_auth_system.* TO 'testuser'@'%';
+
+-- 刷新权限使配置生效
+FLUSH PRIVILEGES;
+
+-- 验证权限
+SHOW GRANTS FOR 'testuser'@'%';
+
 use doc_auth_system;
 
 -- 如果表存在则先删除
@@ -28,12 +40,11 @@ CREATE TABLE IF NOT EXISTS doc_info
 (
     id          BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键 ID',
     uid         VARCHAR(64) NOT NULL COMMENT '文件唯一标识',
+    file_name   VARCHAR(255) DEFAULT NULL COMMENT '文件名',
     account     VARCHAR(64) NOT NULL COMMENT '文档所属人账号',
     name        VARCHAR(64) DEFAULT NULL COMMENT '文档所属人名称',
     create_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     create_by   VARCHAR(64) DEFAULT NULL COMMENT '创建人账号',
-    update_time DATETIME    DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    update_by   VARCHAR(64) COMMENT '更新人账号',
     UNIQUE INDEX idx_uid (uid)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4

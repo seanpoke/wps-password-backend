@@ -60,11 +60,12 @@ public class DocService {
      * 获取文档所有者信息
      *
      * @param docId 文档ID
+     * @param fileName 文件名（可选）
      * @return 文档所有者响应对象
      * @throws RuntimeException 业务异常时抛出
      */
-    public DocOwnerResponse getDocOwner(String docId) {
-        log.info("[getDocOwner] 开始处理，docId: {}", docId);
+    public DocOwnerResponse getDocOwner(String docId, String fileName) {
+        log.info("[getDocOwner] 开始处理，docId: {}, fileName: {}", docId, fileName);
 
         // 从Token中获取当前登录用户信息
         String currentAccount = UserContextHolder.getCurrentAccount();
@@ -85,12 +86,18 @@ public class DocService {
             docInfo.setUid(docId);
             docInfo.setAccount(account);
             docInfo.setName(name != null ? name : account);
+            docInfo.setFileName(fileName);
             docInfo.setCreateBy(account);
             docInfoRepository.save(docInfo);
 
-            log.info("[getDocOwner] 创建新文档记录，docId: {}, owner: {}", docId, account);
+            log.info("[getDocOwner] 创建新文档记录，docId: {}, owner: {}, fileName: {}", docId, account, fileName);
 
 
+        } else if (fileName != null && !fileName.isEmpty() && docInfo.getFileName() == null) {
+            // 如果文档已存在但fileName为空，则更新fileName
+            docInfo.setFileName(fileName);
+            docInfoRepository.save(docInfo);
+            log.info("[getDocOwner] 更新文档fileName，docId: {}, fileName: {}", docId, fileName);
         }
 
         // 判断当前用户的读写权限

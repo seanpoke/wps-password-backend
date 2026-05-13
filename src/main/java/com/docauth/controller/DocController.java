@@ -1,6 +1,7 @@
 package com.docauth.controller;
 
 import com.docauth.dto.ApiResponse;
+import com.docauth.dto.DocOwnerRequest;
 import com.docauth.dto.DocOwnerResponse;
 import com.docauth.dto.DocPasswordRequest;
 import com.docauth.dto.DocPasswordResponse;
@@ -32,19 +33,19 @@ public class DocController {
     private DocService docService;
 
 
-    @GetMapping("/owner")
+    @PostMapping("/owner")
     @Operation(summary = "获取文档所有者信息", description = "根据文档ID查询文档的所有者信息，如果文档不存在则自动创建")
-    public ApiResponse<?> getDocOwner(@Parameter(description = "文档ID", required = true) @RequestParam String docId) {
-        log.info("[getDocOwner] 请求参数: docId={}", docId);
+    public ApiResponse<?> getDocOwner(@RequestBody DocOwnerRequest request) {
+        log.info("[getDocOwner] 请求参数: docId={}, fileName={}", request.getDocId(), request.getFileName());
         
         // 校验docId非空
-        if (docId == null || docId.isEmpty()) {
+        if (request.getDocId() == null || request.getDocId().isEmpty()) {
             return ApiResponse.error(400, "参数错误：文档id不能为空");
         }
 
         try {
             // 调用Service处理业务逻辑
-            DocOwnerResponse response = docService.getDocOwner(docId);
+            DocOwnerResponse response = docService.getDocOwner(request.getDocId(), request.getFileName());
             return ApiResponse.success(response);
         } catch (RuntimeException e) {
             log.warn("[getDocOwner] 业务异常: {}", e.getMessage());
