@@ -2,6 +2,9 @@ server:
   port: 8081
 
 spring:
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
   datasource:
     url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3316}/doc_auth_system?useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&useSSL=false&serverTimezone=Asia/Shanghai&maxAllowedPacket=10485760
     username: ${MYSQL_USER:testuser}

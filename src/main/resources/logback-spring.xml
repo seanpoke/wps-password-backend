@@ -104,9 +104,6 @@
     <!-- MySQL驱动日志 -->
     <logger name="com.mysql" level="WARN"/>
     
-    <!-- 项目业务日志 -->
-    <logger name="com.docauth" level="DEBUG"/>
-    
     <!-- Redis日志 -->
     <logger name="org.springframework.data.redis" level="INFO"/>
     
@@ -118,5 +115,15 @@
         <appender-ref ref="FILE_WARN"/>
         <appender-ref ref="FILE_ERROR"/>
     </root>
+    
+    <!-- 开发环境日志级别 -->
+    <springProfile name="dev">
+        <logger name="com.docauth" level="DEBUG"/>
+    </springProfile>
+    
+    <!-- 生产环境日志级别 -->
+    <springProfile name="prod">
+        <logger name="com.docauth" level="INFO"/>
+    </springProfile>
     
 </configuration>

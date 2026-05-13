@@ -12,6 +12,7 @@ services:
       redis:
         condition: service_started
     environment:
+      - SPRING_PROFILES_ACTIVE=prod
       - MYSQL_HOST=mysql8
       - MYSQL_PORT=3306
       - MYSQL_USER=testuser
@@ -42,8 +43,10 @@ services:
       MYSQL_USER: testuser
       MYSQL_PASSWORD: test123456
       TZ: Asia/Shanghai
+      LANG: C.UTF-8
       MYSQL_CHARACTER_SET_SERVER: utf8mb4
       MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
+      MYSQL_INIT_CONNECT: "SET NAMES utf8mb4;"
     ports:
       - "3316:3306"
     volumes:
@@ -53,9 +56,13 @@ services:
       - /etc/localtime:/etc/localtime:ro
     networks:
       - wps_network
+    # 👇 这里是修复后的正确 command
     command:
       - --default-authentication-plugin=mysql_native_password
       - --sql-mode=STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-character-set-client-handshake
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot123456"]
       interval: 10s
