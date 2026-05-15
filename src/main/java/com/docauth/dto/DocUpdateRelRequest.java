@@ -15,4 +15,7 @@ public class DocUpdateRelRequest {
     
     @Schema(description = "部门DN列表", example = "[\"ou=技术部,dc=example,dc=com\"]")
     private List<String> deptDnList;
+    
+    @Schema(description = "是否为临时操作，true则跳过文件存在性和所有者校验", example = "false", defaultValue = "false")
+    private Boolean isTemp = false;
 }

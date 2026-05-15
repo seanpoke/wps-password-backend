@@ -14,4 +14,7 @@ public class DocPasswordRequest {
     
     @Schema(description = "公私钥版本", example = "default", defaultValue = "default")
     private String keyVersion = "default";
+    
+    @Schema(description = "是否为临时操作，true则跳过文件存在性和所有者校验", example = "false", defaultValue = "false")
+    private Boolean isTemp = false;
 }

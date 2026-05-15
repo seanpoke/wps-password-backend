@@ -130,11 +130,12 @@ public class DocService {
      * @param docId         文档ID
      * @param encryPassword ECC加密的密码
      * @param keyVersion    公私钥版本，默认为"default"
+     * @param isTemp        是否为临时操作，true则跳过文件存在性和所有者校验
      * @return 解密后的密码响应对象
      * @throws RuntimeException 业务异常时抛出
      */
-    public DocPasswordResponse getDocPassword(String docId, String encryPassword, String keyVersion) {
-        log.info("[getDocPassword] 开始处理，docId: {}, keyVersion: {}", docId, keyVersion);
+    public DocPasswordResponse getDocPassword(String docId, String encryPassword, String keyVersion, Boolean isTemp) {
+        log.info("[getDocPassword] 开始处理，docId: {}, keyVersion: {}, isTemp: {}", docId, keyVersion, isTemp);
 
         // 从Token中获取当前登录用户信息
         String currentAccount = UserContextHolder.getCurrentAccount();
@@ -142,7 +143,34 @@ public class DocService {
             throw new RuntimeException("未授权：无法获取当前用户");
         }
 
-        // 从数据库查询文件信息
+        // 如果isTemp为true，跳过文件存在性校验和权限校验
+        if (isTemp != null && isTemp) {
+            log.info("[getDocPassword] isTemp为true，跳过文件存在性和权限校验，docId: {}", docId);
+            
+            // 直接根据keyVersion从ConfigSecretKey中获取私钥
+            String actualKeyVersion = keyVersion != null && !keyVersion.isEmpty() ? keyVersion : "default";
+            ConfigSecretKey configSecretKey = configSecretKeyRepository.findByKeyVersion(actualKeyVersion)
+                    .orElseThrow(() -> new RuntimeException("未找到对应的配置密钥，keyVersion: " + actualKeyVersion));
+
+            // 使用ECC私钥解密
+            try {
+                String password = EccUtil.decrypt(encryPassword, configSecretKey.getPrivateKey());
+
+                // 构建响应
+                DocPasswordResponse response = new DocPasswordResponse();
+                response.setPassword(password);
+
+                log.info("[getDocPassword] 密码获取成功（临时模式），docId: {}, keyVersion: {}, 用户：{}", docId, actualKeyVersion, currentAccount);
+                return response;
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                log.error("[getDocPassword] ECC解密失败: {}", e.getMessage(), e);
+                throw new RuntimeException("解密失败", e);
+            }
+        }
+
+        // 正常模式：从数据库查询文件信息
         DocInfo docInfo = docInfoRepository.findByUid(docId);
         if (docInfo == null) {
             throw new RuntimeException("文件不存在");
@@ -249,14 +277,16 @@ public class DocService {
      * @param docId         文档ID
      * @param accountDnList 用户DN列表
      * @param deptDnList    部门DN列表
+     * @param isTemp        是否为临时操作，true则跳过文件存在性和所有者校验
      * @throws RuntimeException 业务异常时抛出
      */
     @Transactional
-    public void updateDocAuth(String docId, List<String> accountDnList, List<String> deptDnList) {
-        log.info("[updateDocAuth] 开始处理，docId: {}, accountDnList size: {}, deptDnList size: {}",
+    public void updateDocAuth(String docId, List<String> accountDnList, List<String> deptDnList, Boolean isTemp) {
+        log.info("[updateDocAuth] 开始处理，docId: {}, accountDnList size: {}, deptDnList size: {}, isTemp: {}",
                 docId,
                 accountDnList != null ? accountDnList.size() : 0,
-                deptDnList != null ? deptDnList.size() : 0);
+                deptDnList != null ? deptDnList.size() : 0,
+                isTemp);
 
         // 从Token中获取当前登录用户信息
         String currentAccount = UserContextHolder.getCurrentAccount();
@@ -264,7 +294,53 @@ public class DocService {
             throw new RuntimeException("未授权：无法获取当前用户");
         }
 
-        // 从数据库查询文件信息，获取owner
+        // 如果isTemp为true，跳过文件存在性校验和所有者校验
+        if (isTemp != null && isTemp) {
+            log.info("[updateDocAuth] isTemp为true，跳过文件存在性和所有者校验，docId: {}", docId);
+            
+            // 直接执行授权更新逻辑
+            // 删除doc_share_rel表中该docId的所有旧授权记录
+            List<DocShareRel> oldRelations = docShareRelRepository.findByUid(docId);
+            if (!oldRelations.isEmpty()) {
+                docShareRelRepository.deleteAll(oldRelations);
+                log.info("[updateDocAuth] 删除旧授权记录数量: {}", oldRelations.size());
+            }
+
+            // 遍历accountDnList，插入用户授权记录
+            if (accountDnList != null && !accountDnList.isEmpty()) {
+                for (String dn : accountDnList) {
+                    DocShareRel shareRel = new DocShareRel();
+                    shareRel.setUid(docId);
+                    shareRel.setType(1); // 1表示用户
+                    String value = extractValueFromDn(dn);
+                    shareRel.setName(value);
+                    shareRel.setDn(dn);
+                    shareRel.setCreateBy(currentAccount);
+                    docShareRelRepository.save(shareRel);
+                }
+                log.info("[updateDocAuth] 添加用户授权记录数量: {}", accountDnList.size());
+            }
+
+            // 遍历deptDnList，插入部门授权记录
+            if (deptDnList != null && !deptDnList.isEmpty()) {
+                for (String dn : deptDnList) {
+                    DocShareRel shareRel = new DocShareRel();
+                    shareRel.setUid(docId);
+                    shareRel.setType(0); // 0表示部门
+                    String value = extractValueFromDn(dn);
+                    shareRel.setName(value);
+                    shareRel.setDn(dn);
+                    shareRel.setCreateBy(currentAccount);
+                    docShareRelRepository.save(shareRel);
+                }
+                log.info("[updateDocAuth] 添加部门授权记录数量: {}", deptDnList.size());
+            }
+
+            log.info("[updateDocAuth] 授权更新成功（临时模式），docId: {}", docId);
+            return;
+        }
+
+        // 正常模式：从数据库查询文件信息，获取owner
         DocInfo docInfo = docInfoRepository.findByUid(docId);
         if (docInfo == null) {
             throw new RuntimeException("文件不存在");
