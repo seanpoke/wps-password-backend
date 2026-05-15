@@ -75,7 +75,8 @@ public class DocController {
             DocPasswordResponse response = docService.getDocPassword(
                 request.getDocId(), 
                 request.getEncryPassword(), 
-                request.getKeyVersion()
+                request.getKeyVersion(),
+                request.getIsTemp()
             );
             return ApiResponse.success(response);
         } catch (RuntimeException e) {
@@ -119,7 +120,7 @@ public class DocController {
 
         try {
             // 调用Service处理业务逻辑
-            docService.updateDocAuth(request.getDocId(), request.getAccountDnList(), request.getDeptDnList());
+            docService.updateDocAuth(request.getDocId(), request.getAccountDnList(), request.getDeptDnList(), request.getIsTemp());
             return ApiResponse.success("操作成功");
         } catch (RuntimeException e) {
             log.warn("[updateDocAuth] 业务异常: {}", e.getMessage());

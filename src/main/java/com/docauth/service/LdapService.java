@@ -300,18 +300,19 @@ public class LdapService {
 
     /**
      * 递归标记节点的权限状态
+     * hasAuth 仅表示该节点本身在数据库中存在授权记录，不从父节点继承权限
      *
      * @param node      节点
      * @param shareRels 授权记录列表（已预先查询）
      */
     private void markAuthStatus(LdapNodeDTO node, List<DocShareRel> shareRels) {
-        // 判断当前节点是否有权限
+        // 判断当前节点是否有权限（仅检查服务端数据中是否存在精确匹配）
         boolean hasAuth = false;
         if (shareRels != null && !shareRels.isEmpty()) {
             for (DocShareRel rel : shareRels) {
-                // 如果是部门类型(type=0)，且节点的DN与授权的DN匹配或是其子路径
-                if (rel.getType() == 0) { // 0表示部门
-                    if (isDnMatchOrSubPath(node.getDn(), rel.getDn())) {
+                // 如果是部门类型(type=0)，且节点的DN与授权的DN完全匹配
+                if (rel.getType() == 0 && node.getType() == 0) { // 0表示部门
+                    if (node.getDn() != null && node.getDn().equalsIgnoreCase(rel.getDn())) {
                         hasAuth = true;
                         break;
                     }
@@ -341,43 +342,6 @@ public class LdapService {
                 markAuthStatus(child, shareRels);
             }
         }
-    }
-
-    /**
-     * 判断节点DN是否与授权DN匹配或是其子路径
-     * 例如：
-     * - nodeDn: "ou=技术部,dc=example,dc=com"
-     * - authDn: "ou=技术部,dc=example,dc=com"
-     * - 结果：true (完全匹配)
-     * <p>
-     * - nodeDn: "cn=张三,ou=技术部,dc=example,dc=com"
-     * - authDn: "ou=技术部,dc=example,dc=com"
-     * - 结果：true (nodeDn是authDn的子路径)
-     *
-     * @param nodeDn 节点的DN
-     * @param authDn 授权的DN
-     * @return 是否匹配
-     */
-    private boolean isDnMatchOrSubPath(String nodeDn, String authDn) {
-        if (nodeDn == null || authDn == null) {
-            return false;
-        }
-
-        // 转为小写进行比较（LDAP DN不区分大小写）
-        String lowerNodeDn = nodeDn.toLowerCase();
-        String lowerAuthDn = authDn.toLowerCase();
-
-        // 如果完全相同，则匹配
-        if (lowerNodeDn.equals(lowerAuthDn)) {
-            return true;
-        }
-
-        // 判断nodeDn是否以",authDn"结尾（表示是其子路径）
-        if (lowerNodeDn.endsWith("," + lowerAuthDn)) {
-            return true;
-        }
-
-        return false;
     }
 
 
