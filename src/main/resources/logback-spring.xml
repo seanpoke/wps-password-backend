@@ -28,8 +28,8 @@
             <fileNamePattern>${LOG_HOME}/${APP_NAME}-all.%d{yyyy-MM-dd}.log</fileNamePattern>
             <!-- 保留15天的日志 -->
             <maxHistory>15</maxHistory>
-            <!-- 单个日志文件最大100MB -->
-            <totalSizeCap>10GB</totalSizeCap>
+            <!-- 所有日志文件总大小上限10GB -->
+            <totalSizeCap>20GB</totalSizeCap>
         </rollingPolicy>
     </appender>
     
@@ -96,9 +96,8 @@
     <logger name="org.springframework.web" level="INFO"/>
     <logger name="org.springframework.boot" level="INFO"/>
     
-    <!-- Hibernate/JPA日志 -->
+    <!-- Hibernate/JPA日志 - 基础配置 -->
     <logger name="org.hibernate" level="WARN"/>
-    <logger name="org.hibernate.SQL" level="DEBUG"/>
     <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="TRACE"/>
     
     <!-- MySQL驱动日志 -->
@@ -119,11 +118,13 @@
     <!-- 开发环境日志级别 -->
     <springProfile name="dev">
         <logger name="com.docauth" level="DEBUG"/>
+        <logger name="org.hibernate.SQL" level="DEBUG"/>
     </springProfile>
     
     <!-- 生产环境日志级别 -->
     <springProfile name="prod">
         <logger name="com.docauth" level="INFO"/>
+        <logger name="org.hibernate.SQL" level="INFO"/>
     </springProfile>
     
 </configuration>

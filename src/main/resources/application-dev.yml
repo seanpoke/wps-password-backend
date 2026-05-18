@@ -2,11 +2,8 @@ server:
   port: 8081
 
 spring:
-  profiles:
-    active: ${SPRING_PROFILES_ACTIVE:prod}
-
   datasource:
-    url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3316}/doc_auth_system?useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&useSSL=false&serverTimezone=Asia/Shanghai&maxAllowedPacket=10485760
+    url: jdbc:mysql://${MYSQL_HOST:117.72.183.119}:${MYSQL_PORT:3316}/doc_auth_system?useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&useSSL=false&serverTimezone=Asia/Shanghai&maxAllowedPacket=10485760
     username: ${MYSQL_USER:testuser}
     password: ${MYSQL_PASSWORD:test123456}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -38,7 +35,7 @@ spring:
       port: ${REDIS_PORT:6479}
       database: 0
       password: ${REDIS_PASSWORD:sean1234}
-      host: ${REDIS_HOST:127.0.0.1}
+      host: ${REDIS_HOST:117.72.183.119}
 
 springdoc:
   api-docs:
