@@ -23,6 +23,9 @@ public class AccountService {
 
     @Autowired
     private RedisUtil redisUtil;
+    
+    @Autowired
+    private com.docauth.service.ConfigService configService;
 
     /**
      * 用户登录业务逻辑
@@ -46,10 +49,12 @@ public class AccountService {
         // 生成token
         String token = UUID.randomUUID().toString();
 
-        // 将用户对象存储到Redis，设置72小时过期
-        redisUtil.setObject(token, userContext, 72, TimeUnit.HOURS);
+        // 从配置中获取Redis Token过期时间（单位：分钟）
+        Long expireMinutes = configService.getRedisTokenExpireMinutes();
+        // 将用户对象存储到Redis
+        redisUtil.setObject(token, userContext, expireMinutes, TimeUnit.MINUTES);
 
-        log.info("[login] 登录成功，账号: {}, 姓名: {}", userContext.getAccount(), userContext.getName());
+        log.info("[login] 登录成功，账号: {}, 姓名: {}, Token过期时间: {} 分钟", userContext.getAccount(), userContext.getName(), expireMinutes);
 
         // 构建响应
         LoginResponse response = new LoginResponse();

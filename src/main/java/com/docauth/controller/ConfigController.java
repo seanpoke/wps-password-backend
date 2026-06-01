@@ -63,7 +63,7 @@ public class ConfigController {
     /**
      * 刷新配置
      */
-    @PostMapping("/refresh")
+    @GetMapping("/refresh")
     @Operation(summary = "刷新配置", description = "从数据库重新加载所有配置")
     public ApiResponse<String> refreshConfig() {
         try {

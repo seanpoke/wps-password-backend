@@ -23,5 +23,6 @@ public class DocAuthApplication implements CommandLineRunner {
         configService.loadSysConfig();
         configService.loadCacheConfig();
         configService.loadSecretConfig();
+        configService.loadRedisTokenConfig();
     }
 }

@@ -22,6 +22,9 @@ public class TokenInterceptor implements HandlerInterceptor {
     @Autowired
     private ObjectMapper objectMapper;
     
+    @Autowired
+    private com.docauth.service.ConfigService configService;
+    
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         // 从请求头获取token
@@ -44,8 +47,10 @@ public class TokenInterceptor implements HandlerInterceptor {
             return false;
         }
         
-        // 刷新token过期时间（72小时）
-        redisUtil.expire(token, 72, TimeUnit.HOURS);
+        // 从配置中获取Redis Token过期时间（单位：分钟）
+        Long expireMinutes = configService.getRedisTokenExpireMinutes();
+        // 刷新token过期时间
+        redisUtil.expire(token, expireMinutes, TimeUnit.MINUTES);
         
         // 将用户上下文存储到ThreadLocal
         UserContextHolder.setUserContext(userContext);

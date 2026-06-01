@@ -37,6 +37,7 @@ public class ConfigService {
     public static final String CONFIG_TYPE_LDAP = "ldap-config";
     public static final String CONFIG_TYPE_SYS = "sys-config";
     public static final String CONFIG_TYPE_CACHE = "cache-config";
+    public static final String CONFIG_TYPE_REDIS = "redis-config";
 
     // LDAP配置键常量
     public static final String LDAP_URL = "url";
@@ -50,6 +51,9 @@ public class ConfigService {
     
     // 缓存配置键常量
     public static final String CACHE_EXPIRE = "expire";
+    
+    // Redis配置键常量
+    public static final String REDIS_TOKEN_EXPIRE = "token-expire";
 
     // 缓存配置值
     private String ldapUrl;
@@ -59,6 +63,7 @@ public class ConfigService {
     private List<String> ldapTrees;
     private List<String> noTokenUrls;
     private Long cacheExpireMinutes; // 缓存过期时间(分钟)
+    private Long redisTokenExpireMinutes; // Redis Token过期时间(分钟)
     
     // 密钥配置值
     private String publicKey;
@@ -135,6 +140,30 @@ public class ConfigService {
             log.error("加载缓存配置失败: {}", e.getMessage(), e);
             // 使用默认值
             cacheExpireMinutes = 360L;
+        }
+    }
+    
+    /**
+     * 从数据库加载Redis Token过期时间配置
+     */
+    public void loadRedisTokenConfig() {
+        try {
+            String expireValue = docConfigRepository.findFirstByTypeAndKey(CONFIG_TYPE_REDIS, REDIS_TOKEN_EXPIRE)
+                    .map(DocConfig::getValue)
+                    .orElse(null);
+            
+            if (StringUtils.hasText(expireValue)) {
+                redisTokenExpireMinutes = Long.parseLong(expireValue);
+                log.info("Redis Token配置加载成功 - 过期时间: {} 分钟", redisTokenExpireMinutes);
+            } else {
+                // 如果数据库中未找到该配置或值为空，使用默认值72小时（4320分钟）
+                redisTokenExpireMinutes = 4320L;
+                log.warn("Redis Token配置未找到或为空，使用默认值: {} 分钟（72小时）", redisTokenExpireMinutes);
+            }
+        } catch (Exception e) {
+            log.error("加载Redis Token配置失败: {}", e.getMessage(), e);
+            // 使用默认值72小时（4320分钟）
+            redisTokenExpireMinutes = 4320L;
         }
     }
     
@@ -225,6 +254,13 @@ public class ConfigService {
     }
     
     /**
+     * 获取Redis Token过期时间(分钟)
+     */
+    public Long getRedisTokenExpireMinutes() {
+        return redisTokenExpireMinutes != null ? redisTokenExpireMinutes : 4320L;
+    }
+    
+    /**
      * 获取公钥
      */
     public String getPublicKey() {
@@ -267,6 +303,7 @@ public class ConfigService {
         loadSysConfig();
         loadCacheConfig();
         loadSecretConfig();
+        loadRedisTokenConfig();
     }
 
     /**

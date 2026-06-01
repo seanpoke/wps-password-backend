@@ -56,7 +56,6 @@ services:
       - /etc/localtime:/etc/localtime:ro
     networks:
       - wps_network
-    # 👇 这里是修复后的正确 command
     command:
       - --default-authentication-plugin=mysql_native_password
       - --sql-mode=STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
@@ -103,6 +102,38 @@ services:
       options:
         max-size: "5m"
         max-file: "3"
+
+  # --- 4. WhoDB 网页端数据库管理工具 ---
+  whodb:
+    image: clidey/whodb:latest
+    container_name: whodb_container
+    restart: always
+    ports:
+      - "5234:8080"
+    environment:
+      - RE_LOGIN_REQUIRED=false
+      - TZ=Asia/Shanghai
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - wps_network
+
+  # --- 5. Tiny RDM 网页端 Redis 管理工具 ---
+  tiny-rdm:
+    image: ghcr.io/tiny-craft/tiny-rdm:latest
+    container_name: tiny_rdm_container
+    restart: unless-stopped
+    ports:
+      - "5235:8086"  # 👈 映射到宿主机 5235 端口
+    environment:
+      - TZ=Asia/Shanghai
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=sean123456
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ./tiny-rdm/data:/app/tinyrdm
+    networks:
+      - wps_network
 
 volumes:
   mysql8_data:

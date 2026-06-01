@@ -36,3 +36,10 @@ ALTER TABLE doc_info ADD COLUMN file_name VARCHAR(255) DEFAULT NULL COMMENT '文
 
 -- 移除 doc_info 表的 update_time 和 update_by 字段
 ALTER TABLE doc_info DROP COLUMN update_time, DROP COLUMN update_by;
+
+-- 添加 Redis Token 过期时间配置（如果不存在则插入）
+INSERT INTO doc_config (`type`, `key`, `value`, `remark`)
+SELECT 'redis-config', 'token-expire', '4320', 'Redis Token过期时间，单位分钟（默认72小时）'
+WHERE NOT EXISTS (
+    SELECT 1 FROM doc_config WHERE `type` = 'redis-config' AND `key` = 'token-expire'
+);
