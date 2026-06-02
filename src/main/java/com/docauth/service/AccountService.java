@@ -2,6 +2,8 @@ package com.docauth.service;
 
 import com.docauth.context.UserContext;
 import com.docauth.dto.LoginResponse;
+import com.docauth.entity.SysRole;
+import com.docauth.repository.SysRoleRepository;
 import com.docauth.util.RedisUtil;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +28,9 @@ public class AccountService {
     
     @Autowired
     private com.docauth.service.ConfigService configService;
+    
+    @Autowired
+    private SysRoleRepository sysRoleRepository;
 
     /**
      * 用户登录业务逻辑
@@ -61,8 +66,41 @@ public class AccountService {
         response.setToken(token);
         response.setAccount(userContext.getAccount());
         response.setName(userContext.getName());
+        
+        // 查询用户角色
+        String role = getUserRole(userContext.getAccount());
+        response.setRole(role);
 
         return response;
+    }
+
+    /**
+     * 获取用户角色
+     *
+     * @param account 用户账号
+     * @return 角色类型 ("admin" 超级管理员 / "user" 普通用户)，未找到时默认返回 "user"（普通用户）
+     */
+    private String getUserRole(String account) {
+        if (account == null || account.isEmpty()) {
+            return "user"; // 默认普通用户
+        }
+        
+        try {
+            java.util.Optional<SysRole> roleOpt = sysRoleRepository.findByAccount(account);
+            if (roleOpt.isPresent()) {
+                SysRole sysRole = roleOpt.get();
+                String type = sysRole.getType();
+                // 直接返回数据库中存储的角色值（admin 或 user）
+                if ("admin".equals(type) || "user".equals(type)) {
+                    return type;
+                }
+            }
+        } catch (Exception e) {
+            log.error("[getUserRole] 查询用户角色失败，account: {}, error: {}", account, e.getMessage(), e);
+        }
+        
+        // 未查询到角色记录，默认返回普通用户
+        return "user";
     }
 
     /**

@@ -111,6 +111,17 @@ CREATE TABLE IF NOT EXISTS config_secret_key
   COLLATE = utf8mb4_unicode_ci COMMENT ='配置密钥表';
 
 
+CREATE TABLE IF NOT EXISTS sys_role
+(
+    id          BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键 ID',
+    type        VARCHAR(64) NOT NULL COMMENT '角色类型 (admin 超级管理员 / user 普通用户)',
+    account     VARCHAR(64) NOT NULL COMMENT '账号',
+    create_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+     INDEX idx_account (account)
+    ) ENGINE = InnoDB
+    DEFAULT CHARSET = utf8mb4
+    COLLATE = utf8mb4_unicode_ci COMMENT ='系统角色表';
+
 
 INSERT INTO doc_config (`type`, `key`, `value`, `remark`)
 VALUES ('sys-config', 'no-token-url', '/account/login', '登录接口'),

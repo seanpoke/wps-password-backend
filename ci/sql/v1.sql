@@ -43,3 +43,15 @@ SELECT 'redis-config', 'token-expire', '4320', 'Redis Token过期时间，单位
 WHERE NOT EXISTS (
     SELECT 1 FROM doc_config WHERE `type` = 'redis-config' AND `key` = 'token-expire'
 );
+
+-- 创建系统角色表
+CREATE TABLE IF NOT EXISTS sys_role
+(
+    id          BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键 ID',
+    type        VARCHAR(64) NOT NULL COMMENT '角色类型 (admin 超级管理员 / user 普通用户)',
+    account     VARCHAR(64) NOT NULL COMMENT '账号',
+    create_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    INDEX idx_account (account)
+) ENGINE = InnoDB
+DEFAULT CHARSET = utf8mb4
+COLLATE = utf8mb4_unicode_ci COMMENT ='系统角色表';

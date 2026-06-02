@@ -4,6 +4,8 @@ import com.docauth.context.UserContextHolder;
 import com.docauth.dto.ApiResponse;
 import com.docauth.dto.LoginRequest;
 import com.docauth.dto.LoginResponse;
+import com.docauth.entity.SysRole;
+import com.docauth.repository.SysRoleRepository;
 import com.docauth.service.AccountService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -18,6 +20,9 @@ public class AccountController {
 
     @Autowired
     private AccountService accountService;
+    
+    @Autowired
+    private SysRoleRepository sysRoleRepository;
 
     @PostMapping("/account/login")
     @Operation(summary = "用户登录", description = "通过账号密码进行登录，返回token用于后续请求鉴权")
@@ -67,12 +72,45 @@ public class AccountController {
             response.setToken(token);  // 返回当前token
             response.setAccount(currentAccount);
             response.setName(currentName);
+            
+            // 查询用户角色
+            String role = getUserRole(currentAccount);
+            response.setRole(role);
 
             return ApiResponse.success(response);
         } catch (Exception e) {
             log.error("[refreshToken] token刷新异常: {}", e.getMessage(), e);
             return ApiResponse.error(500, "token刷新失败：系统异常");
         }
+    }
+    
+    /**
+     * 获取用户角色
+     *
+     * @param account 用户账号
+     * @return 角色类型 ("admin" 超级管理员 / "user" 普通用户)，未找到时默认返回 "user"（普通用户）
+     */
+    private String getUserRole(String account) {
+        if (account == null || account.isEmpty()) {
+            return "user"; // 默认普通用户
+        }
+        
+        try {
+            java.util.Optional<SysRole> roleOpt = sysRoleRepository.findByAccount(account);
+            if (roleOpt.isPresent()) {
+                SysRole sysRole = roleOpt.get();
+                String type = sysRole.getType();
+                // 直接返回数据库中存储的角色值（admin 或 user）
+                if ("admin".equals(type) || "user".equals(type)) {
+                    return type;
+                }
+            }
+        } catch (Exception e) {
+            log.error("[getUserRole] 查询用户角色失败，account: {}, error: {}", account, e.getMessage(), e);
+        }
+        
+        // 未查询到角色记录，默认返回普通用户
+        return "user";
     }
 
     @PostMapping("/account/logout")
