@@ -9,10 +9,8 @@ import com.docauth.entity.DocInfo;
 import com.docauth.entity.DocShareRel;
 import com.docauth.repository.ConfigSecretKeyRepository;
 import com.docauth.repository.DocInfoRepository;
-import com.docauth.repository.DocOperateLogRepository;
 import com.docauth.repository.DocShareRelRepository;
 import com.docauth.util.EccUtil;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -35,20 +33,10 @@ public class DocService {
     private DocShareRelRepository docShareRelRepository;
 
     @Autowired
-    private DocOperateLogRepository docOperateLogRepository;
-
-
-    @Autowired
     private ConfigSecretKeyRepository configSecretKeyRepository;
 
     @Autowired
     private LdapService ldapService;
-
-    @Autowired
-    private ConfigService configService;
-
-    @Autowired
-    private ObjectMapper objectMapper;
 
     @Autowired
     private PasswordLogWriterService passwordLogWriterService;
