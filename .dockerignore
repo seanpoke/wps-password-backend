@@ -42,7 +42,7 @@ docker-compose.yml
 
 # Documentation
 *.md
-docs/
+dev-docs/
 src/main/doc/
 
 # Test

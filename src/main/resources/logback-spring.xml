@@ -5,6 +5,8 @@
     <property name="LOG_HOME" value="./logs"/>
     <!-- 定义应用名称 -->
     <property name="APP_NAME" value="wps-password-backend"/>
+    <!-- 定义密码审计日志存储路径 -->
+    <property name="PASSWORD_LOG_HOME" value="./passwordLog"/>
     
     <!-- 控制台输出配置 -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
@@ -91,6 +93,43 @@
         </rollingPolicy>
     </appender>
     
+    <!-- 密码审计日志专用Appender - 异步非阻塞 -->
+    <appender name="PASSWORD_AUDIT_APPENDER" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${PASSWORD_LOG_HOME}/password_audit.log</file>
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <!-- 添加毫秒级时间戳，符合等保合规标准 -->
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} | %msg%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+        <!-- 按月滚动策略 -->
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- 按月生成日志文件，格式：yyyy_MM.log（修正：移除 , aux，使用标准月份推导语法） -->
+            <fileNamePattern>${PASSWORD_LOG_HOME}/%d{yyyy_MM}.log</fileNamePattern>
+            <!-- 保留12个月的日志 -->
+            <maxHistory>12</maxHistory>
+            <!-- 所有密码审计日志文件总大小上限50GB -->
+            <totalSizeCap>50GB</totalSizeCap>
+        </rollingPolicy>
+        <!-- 立即刷新到磁盘 -->
+        <immediateFlush>true</immediateFlush>
+    </appender>
+    
+    <!-- 密码审计日志异步包装器（自定义环形队列） -->
+    <appender name="ASYNC_PASSWORD_AUDIT_APPENDER" class="com.docauth.config.RingBufferAsyncAppender">
+        <!-- 队列容量 -->
+        <queueSize>50000</queueSize>
+        <!-- 必须设置为 true，确保 Logback 调用 queue.offer() 而非 put() -->
+        <!-- 这样才能触发我们重写的 offer() 方法中的环形队列逻辑 -->
+        <neverBlock>true</neverBlock>
+        <!-- 引用实际的密码审计日志 appender -->
+        <appender-ref ref="PASSWORD_AUDIT_APPENDER"/>
+    </appender>
+    
+    <!-- 密码审计日志专用Logger -->
+    <logger name="PASSWORD_AUDIT_LOGGER" level="INFO" additivity="false">
+        <appender-ref ref="ASYNC_PASSWORD_AUDIT_APPENDER"/>
+    </logger>
+    
     <!-- Spring框架日志 -->
     <logger name="org.springframework" level="INFO"/>
     <logger name="org.springframework.web" level="INFO"/>
@@ -114,6 +153,9 @@
         <appender-ref ref="FILE_WARN"/>
         <appender-ref ref="FILE_ERROR"/>
     </root>
+    
+    <!-- 优雅停机配置 -->
+    <shutdownHook class="ch.qos.logback.core.hook.DelayingShutdownHook"/>
     
     <!-- 开发环境日志级别 -->
     <springProfile name="dev">

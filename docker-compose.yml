@@ -23,6 +23,7 @@ services:
       - TZ=Asia/Shanghai
     volumes:
       - ./logs:/app/logs
+      - ./passwordLog:/app/passwordLog
       - /etc/localtime:/etc/localtime:ro
     networks:
       - wps_network

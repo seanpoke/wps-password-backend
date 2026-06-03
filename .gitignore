@@ -34,8 +34,11 @@ buildNumber.properties
 .DS_Store
 Thumbs.db
 
-# Docker
-docker-compose.override.yml
+# 方案
+dev-docs/
+
+# 密码日志
+passwordLog/
 
 # 临时文件
 *.tmp

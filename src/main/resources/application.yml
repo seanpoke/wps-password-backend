@@ -49,3 +49,9 @@ springdoc:
     path: /swagger-ui.html
     tags-sorter: alpha
     operations-sorter: alpha
+
+# 密码日志文件配置
+password:
+  log:
+    # 日志文件存储目录（相对路径或绝对路径）
+    dir: ./passwordLog
