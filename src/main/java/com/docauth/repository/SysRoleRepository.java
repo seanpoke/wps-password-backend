@@ -8,9 +8,10 @@ import java.util.Optional;
 
 @Repository
 public interface SysRoleRepository extends JpaRepository<SysRole, Long> {
-    
+
     /**
      * 根据账号查询角色
+     *
      * @param account 账号
      * @return 角色信息
      */

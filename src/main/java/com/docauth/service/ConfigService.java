@@ -8,16 +8,12 @@ import com.docauth.entity.DocConfig;
 import com.docauth.repository.ConfigSecretKeyRepository;
 import com.docauth.repository.DocConfigRepository;
 import com.docauth.util.EccUtil;
-import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -27,34 +23,27 @@ import java.util.stream.Collectors;
 @Service
 public class ConfigService {
 
-    @Autowired
-    private DocConfigRepository docConfigRepository;
-
-    @Autowired
-    private ConfigSecretKeyRepository configSecretKeyRepository;
-
     // 配置类型常量
     public static final String CONFIG_TYPE_LDAP = "ldap-config";
     public static final String CONFIG_TYPE_SYS = "sys-config";
     public static final String CONFIG_TYPE_CACHE = "cache-config";
     public static final String CONFIG_TYPE_REDIS = "redis-config";
-
     // LDAP配置键常量
     public static final String LDAP_URL = "url";
     public static final String LDAP_USERNAME = "username";
     public static final String LDAP_PASSWORD = "pswword";  // 注意: SQL 中是 pswword
     public static final String LDAP_BASE_DN = "baseDn";
     public static final String LDAP_SUB_TREE = "subTree";
-    
     // 系统配置键常量
     public static final String SYS_NO_TOKEN_URL = "no-token-url";
-    
     // 缓存配置键常量
     public static final String CACHE_EXPIRE = "expire";
-    
     // Redis配置键常量
     public static final String REDIS_TOKEN_EXPIRE = "token-expire";
-
+    @Autowired
+    private DocConfigRepository docConfigRepository;
+    @Autowired
+    private ConfigSecretKeyRepository configSecretKeyRepository;
     // 缓存配置值
     private String ldapUrl;
     private String ldapBase;
@@ -64,7 +53,7 @@ public class ConfigService {
     private List<String> noTokenUrls;
     private Long cacheExpireMinutes; // 缓存过期时间(分钟)
     private Long redisTokenExpireMinutes; // Redis Token过期时间(分钟)
-    
+
     // 密钥配置值
     private String publicKey;
     private String privateKey;
@@ -78,10 +67,10 @@ public class ConfigService {
             ldapBase = getConfigValue(LDAP_BASE_DN);
             ldapUsername = getConfigValue(LDAP_USERNAME);
             ldapPassword = getConfigValue(LDAP_PASSWORD);
-            
+
             // 查询所有 subTree 配置(多条记录)
             List<DocConfig> subTreeConfigs = docConfigRepository.findByTypeAndKey(CONFIG_TYPE_LDAP, LDAP_SUB_TREE);
-            
+
             // 提取所有 subTree 值
             if (!subTreeConfigs.isEmpty()) {
                 ldapTrees = subTreeConfigs.stream()
@@ -91,15 +80,15 @@ public class ConfigService {
             } else {
                 ldapTrees = List.of();
             }
-            
-            log.info("LDAP 配置加载成功 - URL: {}, Base: {}, Trees: {}", 
+
+            log.info("LDAP 配置加载成功 - URL: {}, Base: {}, Trees: {}",
                     ldapUrl, ldapBase, ldapTrees);
         } catch (Exception e) {
             log.error("加载 LDAP 配置失败: {}", e.getMessage(), e);
             throw new RuntimeException("加载 LDAP 配置失败", e);
         }
     }
-    
+
     /**
      * 从数据库加载系统配置
      */
@@ -107,7 +96,7 @@ public class ConfigService {
         try {
             // 查询所有 no-token-url 配置(多条记录)
             List<DocConfig> noTokenUrlConfigs = docConfigRepository.findByTypeAndKey(CONFIG_TYPE_SYS, SYS_NO_TOKEN_URL);
-            
+
             // 提取所有 URL 值
             if (!noTokenUrlConfigs.isEmpty()) {
                 noTokenUrls = noTokenUrlConfigs.stream()
@@ -117,14 +106,14 @@ public class ConfigService {
             } else {
                 noTokenUrls = List.of();
             }
-            
+
             log.info("系统配置加载成功 - No Token URLs: {}", noTokenUrls);
         } catch (Exception e) {
             log.error("加载系统配置失败: {}", e.getMessage(), e);
             throw new RuntimeException("加载系统配置失败", e);
         }
     }
-    
+
     /**
      * 从数据库加载缓存配置
      */
@@ -133,7 +122,7 @@ public class ConfigService {
             String expireValue = docConfigRepository.findFirstByTypeAndKey(CONFIG_TYPE_CACHE, CACHE_EXPIRE)
                     .map(DocConfig::getValue)
                     .orElse("360"); // 默认360分钟
-            
+
             cacheExpireMinutes = Long.parseLong(expireValue);
             log.info("缓存配置加载成功 - 过期时间: {} 分钟", cacheExpireMinutes);
         } catch (Exception e) {
@@ -142,7 +131,7 @@ public class ConfigService {
             cacheExpireMinutes = 360L;
         }
     }
-    
+
     /**
      * 从数据库加载Redis Token过期时间配置
      */
@@ -151,7 +140,7 @@ public class ConfigService {
             String expireValue = docConfigRepository.findFirstByTypeAndKey(CONFIG_TYPE_REDIS, REDIS_TOKEN_EXPIRE)
                     .map(DocConfig::getValue)
                     .orElse(null);
-            
+
             if (StringUtils.hasText(expireValue)) {
                 redisTokenExpireMinutes = Long.parseLong(expireValue);
                 log.info("Redis Token配置加载成功 - 过期时间: {} 分钟", redisTokenExpireMinutes);
@@ -166,7 +155,7 @@ public class ConfigService {
             redisTokenExpireMinutes = 4320L;
         }
     }
-    
+
     /**
      * 从数据库加载密钥配置（从config_secret_key表获取优先级最高的密钥）
      */
@@ -175,11 +164,11 @@ public class ConfigService {
             // 查询order_num最大的配置密钥（优先级最高）
             ConfigSecretKey latestKey = configSecretKeyRepository.findFirstByOrderByOrderNumDesc()
                     .orElse(null);
-            
+
             if (latestKey != null) {
                 publicKey = latestKey.getPublicKey();
                 privateKey = latestKey.getPrivateKey();
-                log.info("密钥配置加载成功，keyVersion: {}, orderNum: {}", 
+                log.info("密钥配置加载成功，keyVersion: {}, orderNum: {}",
                         latestKey.getKeyVersion(), latestKey.getOrderNum());
             } else {
                 log.warn("未找到任何配置密钥，请确保config_secret_key表中有数据");
@@ -238,35 +227,35 @@ public class ConfigService {
     public List<String> getLdapTrees() {
         return ldapTrees;
     }
-    
+
     /**
      * 获取无需 Token 验证的 URL 列表
      */
     public List<String> getNoTokenUrls() {
         return noTokenUrls;
     }
-    
+
     /**
      * 获取缓存过期时间(分钟)
      */
     public Long getCacheExpireMinutes() {
         return cacheExpireMinutes != null ? cacheExpireMinutes : 360L;
     }
-    
+
     /**
      * 获取Redis Token过期时间(分钟)
      */
     public Long getRedisTokenExpireMinutes() {
         return redisTokenExpireMinutes != null ? redisTokenExpireMinutes : 4320L;
     }
-    
+
     /**
      * 获取公钥
      */
     public String getPublicKey() {
         return publicKey;
     }
-    
+
     /**
      * 获取私钥
      */
@@ -286,7 +275,7 @@ public class ConfigService {
                     config.setValue(value);
                     docConfigRepository.save(config);
                     log.info("配置更新成功: {} = {}", key, value);
-                    
+
                     // 如果是 LDAP 配置,重新加载
                     loadLdapConfig();
                 },
@@ -317,7 +306,7 @@ public class ConfigService {
     public EncryptResponse encryptText(String text, String keyVersion) {
         // 根据keyVersion获取公钥
         String actualKeyVersion = keyVersion != null && !keyVersion.isEmpty() ? keyVersion : "default";
-        
+
         ConfigSecretKey configKey;
         if ("latest".equals(actualKeyVersion)) {
             // 如果传入"latest"，获取优先级最高的密钥
@@ -328,7 +317,7 @@ public class ConfigService {
             configKey = configSecretKeyRepository.findByKeyVersion(actualKeyVersion)
                     .orElseThrow(() -> new RuntimeException("系统配置错误：未找到密钥版本: " + actualKeyVersion));
         }
-        
+
         String publicKey = configKey.getPublicKey();
         if (publicKey == null || publicKey.isEmpty()) {
             throw new RuntimeException("系统配置错误：公钥为空");
@@ -345,7 +334,7 @@ public class ConfigService {
             response.setEncryptedLength(encryptedText.length());
             response.setKeyVersion(configKey.getKeyVersion());
 
-            log.info("ECC加密成功 - keyVersion: {}, 原始长度: {}, 加密后长度: {}", 
+            log.info("ECC加密成功 - keyVersion: {}, 原始长度: {}, 加密后长度: {}",
                     configKey.getKeyVersion(), text.length(), encryptedText.length());
             return response;
         } catch (Exception e) {
@@ -384,7 +373,7 @@ public class ConfigService {
     public DecryptResponse decryptText(String encryptedText, String keyVersion) {
         // 根据keyVersion获取私钥
         String actualKeyVersion = keyVersion != null && !keyVersion.isEmpty() ? keyVersion : "default";
-        
+
         ConfigSecretKey configKey;
         if ("latest".equals(actualKeyVersion)) {
             // 如果传入"latest"，获取优先级最高的密钥
@@ -395,7 +384,7 @@ public class ConfigService {
             configKey = configSecretKeyRepository.findByKeyVersion(actualKeyVersion)
                     .orElseThrow(() -> new RuntimeException("系统配置错误：未找到密钥版本: " + actualKeyVersion));
         }
-        
+
         String privateKey = configKey.getPrivateKey();
         if (privateKey == null || privateKey.isEmpty()) {
             throw new RuntimeException("系统配置错误：私钥为空");
@@ -410,7 +399,7 @@ public class ConfigService {
             response.setDecryptedText(decryptedText);
             response.setKeyVersion(configKey.getKeyVersion());
 
-            log.info("ECC解密成功 - keyVersion: {}, 解密后长度: {}", 
+            log.info("ECC解密成功 - keyVersion: {}, 解密后长度: {}",
                     configKey.getKeyVersion(), decryptedText.length());
             return response;
         } catch (RuntimeException e) {

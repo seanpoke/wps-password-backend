@@ -2,6 +2,7 @@ package com.docauth.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
+
 import java.time.LocalDateTime;
 
 @Data
@@ -10,17 +11,17 @@ public class DocInfo {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    
+
     private String uid;
-    
+
     private String account;
 
     private String name;
 
     private String fileName;
-    
+
     @Column(insertable = false, updatable = false)
     private LocalDateTime createTime;
-    
+
     private String createBy;
 }

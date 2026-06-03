@@ -8,7 +8,7 @@ import lombok.Data;
 public class DocOwnerRequest {
     @Schema(description = "文档ID", required = true, example = "doc123456")
     private String docId;
-    
+
     @Schema(description = "文件名", required = false, example = "test.docx")
     private String fileName;
 }

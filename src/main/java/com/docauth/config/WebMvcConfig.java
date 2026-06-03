@@ -11,13 +11,13 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
-    
+
     @Autowired
     private TokenInterceptor tokenInterceptor;
-    
+
     @Autowired
     private ConfigService configService;
-    
+
     /**
      * 应用启动时加载系统配置
      */
@@ -25,12 +25,12 @@ public class WebMvcConfig implements WebMvcConfigurer {
     public void init() {
         configService.loadSysConfig();
     }
-    
+
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         // 从数据库获取无需 Token 验证的 URL 列表
         var noTokenUrls = configService.getNoTokenUrls();
-        
+
         // 合并数据库配置和硬编码的排除路径
         String[] excludePatterns = new String[noTokenUrls.size() + 4];
         for (int i = 0; i < noTokenUrls.size(); i++) {
@@ -40,13 +40,13 @@ public class WebMvcConfig implements WebMvcConfigurer {
         excludePatterns[excludePatterns.length - 3] = "/swagger-ui/**";
         excludePatterns[excludePatterns.length - 2] = "/v3/api-docs/**";
         excludePatterns[excludePatterns.length - 1] = "/webjars/**";
-        
+
         // 注册Token拦截器，对所有请求进行拦截（除了排除的路径）
         registry.addInterceptor(tokenInterceptor)
                 .addPathPatterns("/**")
                 .excludePathPatterns(excludePatterns);
     }
-    
+
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         // 配置跨域访问

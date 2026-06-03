@@ -56,7 +56,7 @@ public class DocService {
     /**
      * 获取文档所有者信息
      *
-     * @param docId 文档ID
+     * @param docId    文档ID
      * @param fileName 文件名（可选）
      * @return 文档所有者响应对象
      * @throws RuntimeException 业务异常时抛出
@@ -143,7 +143,7 @@ public class DocService {
         // 如果isTemp为true，跳过文件存在性校验和权限校验
         if (isTemp != null && isTemp) {
             log.info("[getDocPassword] isTemp为true，跳过文件存在性和权限校验，docId: {}", docId);
-            
+
             // 直接根据keyVersion从ConfigSecretKey中获取私钥
             String actualKeyVersion = keyVersion != null && !keyVersion.isEmpty() ? keyVersion : "default";
             ConfigSecretKey configSecretKey = configSecretKeyRepository.findByKeyVersion(actualKeyVersion)
@@ -294,7 +294,7 @@ public class DocService {
         // 如果isTemp为true，跳过文件存在性校验和所有者校验
         if (isTemp != null && isTemp) {
             log.info("[updateDocAuth] isTemp为true，跳过文件存在性和所有者校验，docId: {}", docId);
-            
+
             // 直接执行授权更新逻辑
             // 删除doc_share_rel表中该docId的所有旧授权记录
             List<DocShareRel> oldRelations = docShareRelRepository.findByUid(docId);
@@ -427,7 +427,6 @@ public class DocService {
     }
 
 
-
     /**
      * 判断accountDn是否是authorizedDn的子路径或相同路径
      *
@@ -450,11 +449,7 @@ public class DocService {
         }
 
         // 判断accountDn是否以",authorizedDn"结尾（表示是其子路径）
-        if (lowerAccountDn.endsWith("," + lowerAuthorizedDn)) {
-            return true;
-        }
-
-        return false;
+        return lowerAccountDn.endsWith("," + lowerAuthorizedDn);
     }
 
     /**

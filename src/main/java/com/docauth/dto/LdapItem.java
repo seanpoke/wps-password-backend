@@ -1,6 +1,7 @@
 package com.docauth.dto;
 
 import lombok.Data;
+
 import java.util.List;
 
 @Data

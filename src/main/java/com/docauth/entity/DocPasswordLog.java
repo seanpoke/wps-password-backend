@@ -2,6 +2,7 @@ package com.docauth.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
+
 import java.time.LocalDateTime;
 
 @Data
@@ -10,9 +11,9 @@ public class DocPasswordLog {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    
+
     private String uid;
-    
+
     private String path;
 
     private String fileName;

@@ -5,31 +5,32 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
+
 import java.util.concurrent.TimeUnit;
 
 @Component
 public class RedisUtil {
-    
+
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
-    
+
     @Autowired
     private ObjectMapper objectMapper;
-    
+
     /**
      * 存储字符串到Redis
      */
     public void set(String key, String value, long timeout, TimeUnit unit) {
         stringRedisTemplate.opsForValue().set(key, value, timeout, unit);
     }
-    
+
     /**
      * 获取Redis中的字符串
      */
     public String get(String key) {
         return stringRedisTemplate.opsForValue().get(key);
     }
-    
+
     /**
      * 存储对象到Redis（序列化为JSON）
      */
@@ -41,7 +42,7 @@ public class RedisUtil {
             throw new RuntimeException("对象序列化失败", e);
         }
     }
-    
+
     /**
      * 从Redis获取对象（反序列化JSON）
      */
@@ -56,28 +57,28 @@ public class RedisUtil {
             throw new RuntimeException("对象反序列化失败", e);
         }
     }
-    
+
     /**
      * 删除Redis中的键
      */
     public void delete(String key) {
         stringRedisTemplate.delete(key);
     }
-    
+
     /**
      * 检查键是否存在
      */
     public boolean exists(String key) {
-        return Boolean.TRUE.equals(stringRedisTemplate.hasKey(key));
+        return stringRedisTemplate.hasKey(key);
     }
-    
+
     /**
      * 重置键的过期时间
      */
     public boolean expire(String key, long timeout, TimeUnit unit) {
-        return Boolean.TRUE.equals(stringRedisTemplate.expire(key, timeout, unit));
+        return stringRedisTemplate.expire(key, timeout, unit);
     }
-    
+
     /**
      * 将对象添加到Set中
      */
@@ -89,7 +90,7 @@ public class RedisUtil {
             throw new RuntimeException("对象序列化失败", e);
         }
     }
-    
+
     /**
      * 获取Set中的所有对象
      */
@@ -108,11 +109,11 @@ public class RedisUtil {
             throw new RuntimeException("对象反序列化失败", e);
         }
     }
-    
+
     /**
      * 设置Set的过期时间
      */
     public boolean expireSet(String key, long timeout, TimeUnit unit) {
-        return Boolean.TRUE.equals(stringRedisTemplate.expire(key, timeout, unit));
+        return stringRedisTemplate.expire(key, timeout, unit);
     }
 }

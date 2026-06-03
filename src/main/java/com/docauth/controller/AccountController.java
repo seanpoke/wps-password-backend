@@ -11,7 +11,10 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RestController;
 
 @Slf4j
 @RestController
@@ -20,7 +23,7 @@ public class AccountController {
 
     @Autowired
     private AccountService accountService;
-    
+
     @Autowired
     private SysRoleRepository sysRoleRepository;
 
@@ -72,7 +75,7 @@ public class AccountController {
             response.setToken(token);  // 返回当前token
             response.setAccount(currentAccount);
             response.setName(currentName);
-            
+
             // 查询用户角色
             String role = getUserRole(currentAccount);
             response.setRole(role);
@@ -83,7 +86,7 @@ public class AccountController {
             return ApiResponse.error(500, "token刷新失败：系统异常");
         }
     }
-    
+
     /**
      * 获取用户角色
      *
@@ -94,7 +97,7 @@ public class AccountController {
         if (account == null || account.isEmpty()) {
             return "user"; // 默认普通用户
         }
-        
+
         try {
             java.util.Optional<SysRole> roleOpt = sysRoleRepository.findByAccount(account);
             if (roleOpt.isPresent()) {
@@ -108,7 +111,7 @@ public class AccountController {
         } catch (Exception e) {
             log.error("[getUserRole] 查询用户角色失败，account: {}, error: {}", account, e.getMessage(), e);
         }
-        
+
         // 未查询到角色记录，默认返回普通用户
         return "user";
     }

@@ -11,7 +11,7 @@ public class UserContext {
      * 用户账号
      */
     private String account;
-    
+
     /**
      * 用户名称
      */

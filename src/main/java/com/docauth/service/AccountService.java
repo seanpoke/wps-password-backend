@@ -5,7 +5,6 @@ import com.docauth.dto.LoginResponse;
 import com.docauth.entity.SysRole;
 import com.docauth.repository.SysRoleRepository;
 import com.docauth.util.RedisUtil;
-import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -25,10 +24,10 @@ public class AccountService {
 
     @Autowired
     private RedisUtil redisUtil;
-    
+
     @Autowired
     private com.docauth.service.ConfigService configService;
-    
+
     @Autowired
     private SysRoleRepository sysRoleRepository;
 
@@ -66,7 +65,7 @@ public class AccountService {
         response.setToken(token);
         response.setAccount(userContext.getAccount());
         response.setName(userContext.getName());
-        
+
         // 查询用户角色
         String role = getUserRole(userContext.getAccount());
         response.setRole(role);
@@ -84,7 +83,7 @@ public class AccountService {
         if (account == null || account.isEmpty()) {
             return "user"; // 默认普通用户
         }
-        
+
         try {
             java.util.Optional<SysRole> roleOpt = sysRoleRepository.findByAccount(account);
             if (roleOpt.isPresent()) {
@@ -98,7 +97,7 @@ public class AccountService {
         } catch (Exception e) {
             log.error("[getUserRole] 查询用户角色失败，account: {}, error: {}", account, e.getMessage(), e);
         }
-        
+
         // 未查询到角色记录，默认返回普通用户
         return "user";
     }

@@ -1,15 +1,14 @@
 package com.docauth.config;
 
+import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Contact;
 import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.info.License;
 import io.swagger.v3.oas.models.parameters.Parameter;
-import io.swagger.v3.oas.models.Components;
 import org.springdoc.core.customizers.OperationCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.method.HandlerMethod;
 
 /**
  * Swagger配置类
@@ -42,26 +41,26 @@ public class SwaggerConfig {
             // 获取方法名和类名
             String methodName = handlerMethod.getMethod().getName();
             String className = handlerMethod.getBeanType().getSimpleName();
-            
+
             // 排除 account/login 接口
             if ("AccountController".equals(className) && "login".equals(methodName)) {
                 return operation;
             }
-            
+
             // 添加 token 参数（非必填）
             Parameter tokenParameter = new Parameter()
                     .name("token")
                     .in("header")
                     .description("用户认证令牌（可选）")
                     .required(false);
-            
+
             // 如果 operation 的 parameters 为 null，需要初始化
             if (operation.getParameters() == null) {
                 operation.setParameters(new java.util.ArrayList<>());
             }
-            
+
             operation.getParameters().add(tokenParameter);
-            
+
             return operation;
         };
     }

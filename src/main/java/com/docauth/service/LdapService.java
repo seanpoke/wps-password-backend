@@ -8,21 +8,19 @@ import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.ldap.core.AttributesMapper;
+import org.springframework.ldap.core.ContextMapper;
+import org.springframework.ldap.core.DirContextAdapter;
 import org.springframework.ldap.core.LdapTemplate;
+import org.springframework.ldap.filter.AndFilter;
+import org.springframework.ldap.filter.HardcodedFilter;
 import org.springframework.ldap.query.LdapQueryBuilder;
+import org.springframework.ldap.query.SearchScope;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
-
-import org.springframework.ldap.core.ContextMapper;
-import org.springframework.ldap.core.DirContextAdapter;
-import org.springframework.ldap.query.SearchScope;
-import org.springframework.ldap.filter.AndFilter;
-import org.springframework.ldap.filter.HardcodedFilter;
-import org.springframework.util.CollectionUtils;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -33,37 +31,16 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class LdapService {
 
-    @Autowired
-    private LdapTemplate ldapTemplate;
-
-    @Autowired
-    private DocShareRelRepository docShareRelRepository;
-
-    @Autowired
-    private ConfigService configService;
-
     /**
      * 本地内存缓存: key=baseDn, value=缓存数据(包含节点列表和过期时间)
      */
     private final ConcurrentHashMap<String, CacheEntry> ldapCache = new ConcurrentHashMap<>();
-
-    /**
-     * 缓存条目
-     */
-    @Data
-    private static class CacheEntry {
-        private List<LdapTreeNode> nodes;
-        private long expireTime; // 过期时间戳(毫秒)
-
-        public CacheEntry(List<LdapTreeNode> nodes, long ttlMillis) {
-            this.nodes = nodes;
-            this.expireTime = System.currentTimeMillis() + ttlMillis;
-        }
-
-        public boolean isExpired() {
-            return System.currentTimeMillis() > expireTime;
-        }
-    }
+    @Autowired
+    private LdapTemplate ldapTemplate;
+    @Autowired
+    private DocShareRelRepository docShareRelRepository;
+    @Autowired
+    private ConfigService configService;
 
     /**
      * 查询用户的 LDAP DN
@@ -162,69 +139,6 @@ public class LdapService {
             return null;
         }
     }
-
-
-    /**
-     * LDAP 树节点
-     */
-    @Data
-    public static class LdapTreeNode {
-        private String dn;  // 区分名
-        private String name; // 名称 (cn 或 uid)
-        private String objectClass; // 对象类
-        private Map<String, Object> attributes; // 其他属性
-        private List<LdapTreeNode> children; // 子节点
-
-        public LdapTreeNode() {
-            this.children = new ArrayList<>();
-            this.attributes = new HashMap<>();
-        }
-
-        public String getDn() {
-            return dn;
-        }
-
-        public void setDn(String dn) {
-            this.dn = dn;
-        }
-
-        public String getName() {
-            return name;
-        }
-
-        public void setName(String name) {
-            this.name = name;
-        }
-
-        public String getObjectClass() {
-            return objectClass;
-        }
-
-        public void setObjectClass(String objectClass) {
-            this.objectClass = objectClass;
-        }
-
-        public Map<String, Object> getAttributes() {
-            return attributes;
-        }
-
-        public void setAttributes(Map<String, Object> attributes) {
-            this.attributes = attributes;
-        }
-
-        public List<LdapTreeNode> getChildren() {
-            return children;
-        }
-
-        public void setChildren(List<LdapTreeNode> children) {
-            this.children = children;
-        }
-
-        public void addChild(LdapTreeNode child) {
-            this.children.add(child);
-        }
-    }
-
 
     /**
      * 查询 LDAP 树形结构并标记权限
@@ -343,7 +257,6 @@ public class LdapService {
             }
         }
     }
-
 
     /**
      * 转换单个节点为 DTO
@@ -590,5 +503,84 @@ public class LdapService {
                     return node;
                 }
         );
+    }
+
+    /**
+     * 缓存条目
+     */
+    @Data
+    private static class CacheEntry {
+        private List<LdapTreeNode> nodes;
+        private long expireTime; // 过期时间戳(毫秒)
+
+        public CacheEntry(List<LdapTreeNode> nodes, long ttlMillis) {
+            this.nodes = nodes;
+            this.expireTime = System.currentTimeMillis() + ttlMillis;
+        }
+
+        public boolean isExpired() {
+            return System.currentTimeMillis() > expireTime;
+        }
+    }
+
+    /**
+     * LDAP 树节点
+     */
+    @Data
+    public static class LdapTreeNode {
+        private String dn;  // 区分名
+        private String name; // 名称 (cn 或 uid)
+        private String objectClass; // 对象类
+        private Map<String, Object> attributes; // 其他属性
+        private List<LdapTreeNode> children; // 子节点
+
+        public LdapTreeNode() {
+            this.children = new ArrayList<>();
+            this.attributes = new HashMap<>();
+        }
+
+        public String getDn() {
+            return dn;
+        }
+
+        public void setDn(String dn) {
+            this.dn = dn;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public String getObjectClass() {
+            return objectClass;
+        }
+
+        public void setObjectClass(String objectClass) {
+            this.objectClass = objectClass;
+        }
+
+        public Map<String, Object> getAttributes() {
+            return attributes;
+        }
+
+        public void setAttributes(Map<String, Object> attributes) {
+            this.attributes = attributes;
+        }
+
+        public List<LdapTreeNode> getChildren() {
+            return children;
+        }
+
+        public void setChildren(List<LdapTreeNode> children) {
+            this.children = children;
+        }
+
+        public void addChild(LdapTreeNode child) {
+            this.children.add(child);
+        }
     }
 }
