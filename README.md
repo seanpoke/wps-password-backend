@@ -69,7 +69,7 @@ mvn spring-boot:run -Dspring-boot.run.profiles=dev
 
 ### 3. API 文档
 启动应用后，访问 Swagger UI 查看在线接口文档：
-[http://localhost:8081/swagger-ui.html](http://localhost:8081/swagger-ui.html)
+[http://localhost:8081/swagger-ui/index.html](http://localhost:8081/swagger-ui.html)
 
 ## 核心业务流程
 

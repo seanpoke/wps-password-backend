@@ -5,7 +5,7 @@ services:
     container_name: wps_app_container
     restart: always
     ports:
-      - "8081:8081"
+      - "8081:8081" # 👈 保持映射，老客户端继续用 HTTP 访问
     depends_on:
       mysql8:
         condition: service_healthy
@@ -134,7 +134,25 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - ./tiny-rdm/data:/app/tinyrdm
     networks:
+      - wps_network # 👈 已修复此处末尾多余的连字符
+
+  # --- 6. Nginx ---
+  wps-nginx:
+    image: docker.1ms.run/library/nginx:stable-alpine
+    container_name: wps_nginx_container
+    restart: always
+    ports:
+      - "8880:80"
+      - "8443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./https_cert/server.crt:/etc/nginx/certs/server.crt:ro
+      - ./https_cert/server.key:/etc/nginx/certs/server.key:ro
+      - /etc/localtime:/etc/localtime:ro
+    networks:
       - wps_network
+    depends_on:
+      - wps-app
 
 volumes:
   mysql8_data:

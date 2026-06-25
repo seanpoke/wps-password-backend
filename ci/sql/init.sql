@@ -138,6 +138,6 @@ VALUES ('sys-config', 'no-token-url', '/account/login', '登录接口'),
 
 -- 插入初始配置密钥（使用示例密钥，生产环境请替换为实际生成的密钥）
 INSERT INTO config_secret_key (public_key, private_key, key_version, order_num)
-VALUES ('MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEuY2/Hz7c7gM0O8P/8VYjDasWhdW4jyS99+Xwyghe+CVFko7KPeamzaOsUffIHQz0VAA8RH9MV1BYyuZAJ7X05Q==',
-        'MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQgaqjFaKCKOm3fwBe3gsC9RqU1I2PXdZFoYDoxwvY9URigCgYIKoZIzj0DAQehRANCAAS5jb8fPtzuAzQ7w//xViMNqxaF1biPJL335fDKCF74JUWSjso95qbNo6xR98gdDPRUADxEf0xXUFjK5kAntfTl',
-        'default', 1);
+VALUES ('MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEeSCpnnaULA0Vr9RwrIwagBAUKLtMVn4N3IXUGJbIcNmRTrVUDf20cRq3ka4n6y4SkJhUYBN/jSVxDmTnUnw4Dw==',
+        'MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQg81v0cCTbS6NwLK/+Leg+21ojQZ6sZeq2vwHhVoZMvjmgCgYIKoZIzj0DAQehRANCAAR5IKmedpQsDRWv1HCsjBqAEBQou0xWfg3chdQYlshw2ZFOtVQN/bRxGreRrifrLhKQmFRgE3+NJXEOZOdSfDgP',
+        'v1', 1);
