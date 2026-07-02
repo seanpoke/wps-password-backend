@@ -95,7 +95,6 @@ mvn spring-boot:run -Dspring-boot.run.profiles=dev
 | :--- | :--- | :--- |
 | `doc_info` | 文档基本信息 | uid, account (所有者), file_name |
 | `doc_share_rel` | 文档授权关系 | uid, type (0部门/1用户), dn (LDAP路径) |
-| `doc_password_log` | 密码操作日志 | uid, before/after_password, possible_password (JSON) |
 | `config_secret_key` | ECC 密钥配置 | public_key, private_key, key_version, order_num |
 | `doc_config` | 系统动态配置 | type, key, value (LDAP/Cache/System配置) |
 

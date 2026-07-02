@@ -70,30 +70,6 @@ CREATE TABLE IF NOT EXISTS doc_share_rel
 
 
 -- 如果表存在则先删除
-DROP TABLE IF EXISTS doc_password_log;
-
-CREATE TABLE IF NOT EXISTS doc_password_log
-(
-    id                BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键 ID',
-    uid               VARCHAR(64) NOT NULL COMMENT '文件唯一标识',
-    path              VARCHAR(500) COMMENT '文件路径',
-    file_name         VARCHAR(255) COMMENT '文件名',
-    platform          VARCHAR(64) COMMENT '平台 win、android',
-    before_password   VARCHAR(255) COMMENT '修改前密码',
-    after_password    VARCHAR(255) COMMENT '修改后密码',
-    possible_password TEXT COMMENT '可能的密码集合（JSON格式）',
-    create_time       DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    create_by         VARCHAR(64) DEFAULT NULL COMMENT '操作人账号',
-    update_time       DATETIME    DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    update_by         VARCHAR(64) COMMENT '更新人账号',
-    INDEX idx_query_log (uid, path, platform, create_by),
-    INDEX idx_create_by_file_name (create_by, file_name)
-) ENGINE = InnoDB
-  DEFAULT CHARSET = utf8mb4
-  COLLATE = utf8mb4_unicode_ci COMMENT ='密码操作日志表';
-
-
--- 如果表存在则先删除
 DROP TABLE IF EXISTS config_secret_key;
 
 CREATE TABLE IF NOT EXISTS config_secret_key
