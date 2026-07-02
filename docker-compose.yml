@@ -5,7 +5,7 @@ services:
     container_name: wps_app_container
     restart: always
     ports:
-      - "8081:8081" # 👈 保持映射，老客户端继续用 HTTP 访问
+      - "8081:8081"
     depends_on:
       mysql8:
         condition: service_healthy
@@ -104,39 +104,25 @@ services:
         max-size: "5m"
         max-file: "3"
 
-  # --- 4. WhoDB 网页端数据库管理工具 ---
-  whodb:
-    image: clidey/whodb:latest
-    container_name: whodb_container
-    restart: always
+  # --- 4. DBX 网页端通用数据库管理工具 ---
+  dbx:
+    image: t8y2/dbx:latest
+    container_name: dbx_container
+    restart: unless-stopped
     ports:
-      - "5234:8080"
+      - "4224:4224"
     environment:
-      - RE_LOGIN_REQUIRED=false
       - TZ=Asia/Shanghai
+      - DBX_PASSWORD=sean123456  # 👈 登录密码码
+      # 如果后续希望像下面 Nginx 配置一样，使用 http://IP:8880/dbx 访问，请取消下行的注释：
+      # - DBX_PUBLIC_BASE_PATH=/dbx
     volumes:
+      - ./dbx/data:/app/data
       - /etc/localtime:/etc/localtime:ro
     networks:
       - wps_network
 
-  # --- 5. Tiny RDM 网页端 Redis 管理工具 ---
-  tiny-rdm:
-    image: ghcr.io/tiny-craft/tiny-rdm:latest
-    container_name: tiny_rdm_container
-    restart: unless-stopped
-    ports:
-      - "5235:8086"  # 👈 映射到宿主机 5235 端口
-    environment:
-      - TZ=Asia/Shanghai
-      - ADMIN_USERNAME=admin
-      - ADMIN_PASSWORD=sean123456
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - ./tiny-rdm/data:/app/tinyrdm
-    networks:
-      - wps_network # 👈 已修复此处末尾多余的连字符
-
-  # --- 6. Nginx ---
+  # --- 5. Nginx ---
   wps-nginx:
     image: docker.1ms.run/library/nginx:stable-alpine
     container_name: wps_nginx_container

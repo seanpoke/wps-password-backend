@@ -9,7 +9,7 @@ http {
     server {
         # listen 80;
         listen 443 ssl;
-        server_name *.greenet.com.cn 10.8.5.55;
+        server_name *.abc.com.cn 10.8.5.55; # 这里支持填写多个域名或ip, 多个域名之间用空格隔开
 
         ssl_certificate /etc/nginx/certs/server.crt;
         ssl_certificate_key /etc/nginx/certs/server.key;
