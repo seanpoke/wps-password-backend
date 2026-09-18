@@ -4,8 +4,8 @@ import com.docauth.context.UserContextHolder;
 import com.docauth.dto.ApiResponse;
 import com.docauth.dto.LoginRequest;
 import com.docauth.dto.LoginResponse;
+import com.docauth.dto.ChangePasswordRequest;
 import com.docauth.entity.SysRole;
-import com.docauth.repository.SysRoleRepository;
 import com.docauth.service.AccountService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -16,6 +16,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 @Slf4j
 @RestController
 @Tag(name = "账户管理", description = "用户登录认证相关接口")
@@ -23,9 +26,6 @@ public class AccountController {
 
     @Autowired
     private AccountService accountService;
-
-    @Autowired
-    private SysRoleRepository sysRoleRepository;
 
     @PostMapping("/account/login")
     @Operation(summary = "用户登录", description = "通过账号密码进行登录，返回token用于后续请求鉴权")
@@ -76,44 +76,20 @@ public class AccountController {
             response.setAccount(currentAccount);
             response.setName(currentName);
 
-            // 查询用户角色
-            String role = getUserRole(currentAccount);
+            // 查询用户角色（多角色取并集，role 为优先级最高的角色 code）
+            List<SysRole> roles = accountService.getUserRoles(currentAccount);
+            String role = accountService.getPrimaryRole(roles);
             response.setRole(role);
+            response.setRoles(roles.stream().map(SysRole::getCode).collect(Collectors.toList()));
+            // 回填身份源（从 Redis 中的 UserContext 获取，避免刷新后缺 source）
+            response.setSource(org.springframework.util.StringUtils.hasText(UserContextHolder.getCurrentSource())
+                    ? UserContextHolder.getCurrentSource() : null);
 
             return ApiResponse.success(response);
         } catch (Exception e) {
             log.error("[refreshToken] token刷新异常: {}", e.getMessage(), e);
             return ApiResponse.error(500, "token刷新失败：系统异常");
         }
-    }
-
-    /**
-     * 获取用户角色
-     *
-     * @param account 用户账号
-     * @return 角色类型 ("admin" 超级管理员 / "user" 普通用户)，未找到时默认返回 "user"（普通用户）
-     */
-    private String getUserRole(String account) {
-        if (account == null || account.isEmpty()) {
-            return "user"; // 默认普通用户
-        }
-
-        try {
-            java.util.Optional<SysRole> roleOpt = sysRoleRepository.findByAccount(account);
-            if (roleOpt.isPresent()) {
-                SysRole sysRole = roleOpt.get();
-                String type = sysRole.getType();
-                // 直接返回数据库中存储的角色值（admin 或 user）
-                if ("admin".equals(type) || "user".equals(type)) {
-                    return type;
-                }
-            }
-        } catch (Exception e) {
-            log.error("[getUserRole] 查询用户角色失败，account: {}, error: {}", account, e.getMessage(), e);
-        }
-
-        // 未查询到角色记录，默认返回普通用户
-        return "user";
     }
 
     @PostMapping("/account/logout")
@@ -128,6 +104,32 @@ public class AccountController {
         } catch (Exception e) {
             log.error("[logout] 登出异常: {}", e.getMessage(), e);
             return ApiResponse.error(500, "登出失败：系统异常");
+        }
+    }
+
+    @PostMapping("/account/change-password")
+    @Operation(summary = "修改密码", description = "本地用户修改密码（首登改密或主动修改），LDAP 用户不支持")
+    public ApiResponse<?> changePassword(@RequestHeader("token") String token, @RequestBody ChangePasswordRequest request) {
+        log.info("[changePassword] 接收到密码修改请求");
+
+        if (request.getOldPassword() == null || request.getOldPassword().isEmpty()
+                || request.getNewPassword() == null || request.getNewPassword().isEmpty()) {
+            return ApiResponse.error(400, "参数错误：原密码和新密码不能为空");
+        }
+
+        try {
+            String account = UserContextHolder.getCurrentAccount();
+            if (account == null || account.isEmpty()) {
+                return ApiResponse.error(401, "未授权：用户未登录");
+            }
+            accountService.changePassword(account, request.getOldPassword(), request.getNewPassword());
+            return ApiResponse.success("密码修改成功");
+        } catch (RuntimeException e) {
+            log.warn("[changePassword] 失败: {}", e.getMessage());
+            return ApiResponse.error(400, e.getMessage());
+        } catch (Exception e) {
+            log.error("[changePassword] 异常: {}", e.getMessage(), e);
+            return ApiResponse.error(500, "密码修改失败：系统异常");
         }
     }
 }

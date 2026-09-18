@@ -45,3 +45,34 @@ passwordLog/
 *.bak
 *.swp
 *~
+
+# 前端依赖与构建产物
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.output/
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# 运行时临时目录（部署脚本/日志，非源码）
+tmp/
+
+# Redis 持久化文件
+dump.rdb
+*.rdb
+
+# 前端构建产物（由 npm run build 生成，deploy.ps1 会自动重新生成）
+webroot/assets/
+webroot/index.html
+
+# 验证/调试用静态页面（非产品源码；本地运行时由应用托管，不入库）
+src/main/resources/static/admin.html
+src/main/resources/static/verify.html
+webroot/verify.html
+
+# 编译产物兜底
+*.class
+
+# 会话/私有记忆（CodeBuddy 工作记忆，非项目源码）
+.codebuddy/

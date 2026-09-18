@@ -134,6 +134,10 @@ public class LdapService {
             fallbackContext.setName(account);
             return fallbackContext;
 
+        } catch (org.springframework.dao.EmptyResultDataAccessException e) {
+            // 账号在 LDAP 中不存在（如本地外部用户），属正常分支，回退本地认证，不刷 ERROR 堆栈
+            log.debug("LDAP 未找到账号 {}，将回退本地用户认证", account);
+            return null;
         } catch (Exception e) {
             log.error("LDAP 认证异常: {}, 原因: {}", account, e.getMessage(), e);
             return null;
@@ -224,19 +228,11 @@ public class LdapService {
         boolean hasAuth = false;
         if (shareRels != null && !shareRels.isEmpty()) {
             for (DocShareRel rel : shareRels) {
-                // 如果是部门类型(type=0)，且节点的DN与授权的DN完全匹配
-                if (rel.getType() == 0 && node.getType() == 0) { // 0表示部门
-                    if (node.getDn() != null && node.getDn().equalsIgnoreCase(rel.getDn())) {
-                        hasAuth = true;
-                        break;
-                    }
-                }
-                // 如果是用户类型(type=1)，且节点的DN与授权的DN完全匹配
-                else if (rel.getType() == 1 && node.getType() == 1) { // 1表示用户
-                    if (node.getDn() != null && node.getDn().equalsIgnoreCase(rel.getDn())) {
-                        hasAuth = true;
-                        break;
-                    }
+                // id 化匹配：授权记录的 (type, targetId) 与节点 (type, id) 精确对应
+                if (rel.getType() != null && rel.getType().equals(node.getType())
+                        && rel.getTargetId() != null && rel.getTargetId().equals(node.getId())) {
+                    hasAuth = true;
+                    break;
                 }
             }
         }
@@ -426,6 +422,83 @@ public class LdapService {
     }
 
     /**
+     * 根据部门 DN 返回其子树（含自身），用于按用户 scope 过滤权限树
+     */
+    public List<LdapNodeDTO> getDeptSubtreeWithAuth(String docId, String rootDn) {
+        List<DocShareRel> shareRels = null;
+        if (docId != null) {
+            shareRels = docShareRelRepository.findByUid(docId);
+        }
+        List<LdapTreeNode> tree = getLdapTreeNodes();
+        LdapTreeNode root = findNodeByDn(tree, rootDn.toLowerCase());
+        List<LdapNodeDTO> result = new ArrayList<>();
+        if (root != null) {
+            LdapNodeDTO dto = toDTO(root);
+            if (!CollectionUtils.isEmpty(shareRels)) {
+                markAuthStatus(dto, shareRels);
+            }
+            result.add(dto);
+        }
+        return result;
+    }
+
+    /**
+     * 强制刷新 LDAP 树缓存（后台管理勾选部门时使用）
+     */
+    public void forceRefreshLdapCache() {
+        ldapCache.clear();
+        log.info("[LdapService] LDAP 树缓存已强制清空");
+    }
+
+    /**
+     * 按关键字搜索 LDAP 用户（用于后台给内部账号绑定部门可见范围时选人）
+     */
+    public List<LdapNodeDTO> searchLdapUsers(String keyword) {
+        List<LdapNodeDTO> result = new ArrayList<>();
+        if (keyword == null || keyword.trim().isEmpty()) {
+            return result;
+        }
+        try {
+            String kw = keyword.trim().replace("*", "");
+            String filter = "(&(objectClass=user)(|(sAMAccountName=*" + kw + "*)(cn=*" + kw + "*)))";
+            List<LdapNodeDTO> found = ldapTemplate.search(
+                    org.springframework.ldap.query.LdapQueryBuilder.query().filter(filter),
+                    (org.springframework.ldap.core.ContextMapper<LdapNodeDTO>) ctx -> {
+                        org.springframework.ldap.core.DirContextOperations dco =
+                                (org.springframework.ldap.core.DirContextOperations) ctx;
+                        LdapNodeDTO n = new LdapNodeDTO();
+                        n.setDn(dco.getDn().toString());
+                        n.setType(1);
+                        javax.naming.directory.Attributes attrs = dco.getAttributes();
+                        n.setName(attrs.get("cn") != null ? attrs.get("cn").get().toString() : null);
+                        n.setAccount(attrs.get("sAMAccountName") != null
+                                ? attrs.get("sAMAccountName").get().toString() : null);
+                        return n;
+                    });
+            result.addAll(found);
+        } catch (Exception e) {
+            log.error("[searchLdapUsers] 查询失败: {}", e.getMessage(), e);
+        }
+        return result;
+    }
+
+    /**
+     * 递归查找指定 DN 的节点
+     */
+    private LdapTreeNode findNodeByDn(List<LdapTreeNode> nodes, String targetDn) {
+        for (LdapTreeNode n : nodes) {
+            if (n.getDn() != null && n.getDn().toLowerCase().equals(targetDn)) {
+                return n;
+            }
+            LdapTreeNode found = findNodeByDn(n.getChildren(), targetDn);
+            if (found != null) {
+                return found;
+            }
+        }
+        return null;
+    }
+
+    /**
      * 从 LDAP 查询平铺的节点列表(无树形关系)
      *
      * @return 平铺的节点列表
@@ -503,6 +576,13 @@ public class LdapService {
                     return node;
                 }
         );
+    }
+
+    /**
+     * 暴露全量 LDAP 条目（person + organizationalUnit），供 LdapSyncService 同步使用
+     */
+    public List<LdapTreeNode> getAllLdapEntries() {
+        return getLdapEntriesFromLdap();
     }
 
     /**

@@ -32,19 +32,24 @@ public class WebMvcConfig implements WebMvcConfigurer {
         var noTokenUrls = configService.getNoTokenUrls();
 
         // 合并数据库配置和硬编码的排除路径
-        String[] excludePatterns = new String[noTokenUrls.size() + 4];
-        for (int i = 0; i < noTokenUrls.size(); i++) {
-            excludePatterns[i] = noTokenUrls.get(i);
-        }
-        excludePatterns[excludePatterns.length - 4] = "/account/logout";
-        excludePatterns[excludePatterns.length - 3] = "/swagger-ui/**";
-        excludePatterns[excludePatterns.length - 2] = "/v3/api-docs/**";
-        excludePatterns[excludePatterns.length - 1] = "/webjars/**";
+        var excludes = new java.util.ArrayList<String>();
+        excludes.addAll(noTokenUrls);
+        // 硬编码放行：接口类
+        excludes.add("/account/logout");
+        excludes.add("/swagger-ui/**");
+        excludes.add("/v3/api-docs/**");
+        excludes.add("/webjars/**");
+        // 硬编码放行：前端静态页面（验证页 + 新管理后台 SPA）
+        excludes.add("/verify.html");
+        excludes.add("/admin.html");
+        excludes.add("/");
+        excludes.add("/index.html");
+        excludes.add("/assets/**");
 
         // 注册Token拦截器，对所有请求进行拦截（除了排除的路径）
         registry.addInterceptor(tokenInterceptor)
                 .addPathPatterns("/**")
-                .excludePathPatterns(excludePatterns);
+                .excludePathPatterns(excludes);
     }
 
     @Override

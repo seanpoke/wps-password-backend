@@ -108,7 +108,7 @@ public class DocController {
 
         try {
             // 调用Service处理业务逻辑
-            docService.updateDocAuth(request.getDocId(), request.getAccountDnList(), request.getDeptDnList(), request.getIsTemp());
+            docService.updateDocAuth(request.getDocId(), request.getUserIdList(), request.getDeptIdList(), request.getIsTemp());
             return ApiResponse.success("操作成功");
         } catch (RuntimeException e) {
             log.warn("[updateDocAuth] 业务异常: {}", e.getMessage());

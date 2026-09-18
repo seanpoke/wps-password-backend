@@ -20,6 +20,11 @@ public class LdapNodeDTO {
     private String dn;
 
     /**
+     * id 化节点标识：type=0 -> sys_dept.id；type=1 -> sys_user.id
+     */
+    private Long id;
+
+    /**
      * 类型: 0=部门, 1=用户
      */
     private Integer type;
