@@ -80,15 +80,23 @@ public class ScopeService {
             addRoot(scope, u.getDeptId());
         }
 
-        // user directly bound visible depts
+        // user directly bound visible depts（deptId=0 表示“全部”，直接全量）
         if (userId != null) {
             for (VisibleDeptRel r : visibleDeptRelRepository.findByRelTypeAndRelId("USER", userId)) {
+                if (r.getDeptId() != null && r.getDeptId() == 0L) {
+                    scope.full = true;
+                    return scope;
+                }
                 addRoot(scope, r.getDeptId());
             }
         }
-        // depts bound by user's roles
+        // depts bound by user's roles（deptId=0 表示“全部”，直接全量）
         for (Long roleId : roleIds) {
             for (VisibleDeptRel r : visibleDeptRelRepository.findByRelTypeAndRelId("ROLE", roleId)) {
+                if (r.getDeptId() != null && r.getDeptId() == 0L) {
+                    scope.full = true;
+                    return scope;
+                }
                 addRoot(scope, r.getDeptId());
             }
         }

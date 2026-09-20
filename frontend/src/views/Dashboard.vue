@@ -14,8 +14,7 @@
 
     <el-card shadow="never" class="quick" header="快速操作">
       <el-button type="primary" :icon="OfficeBuilding" @click="go('/depts')">部门管理</el-button>
-      <el-button type="success" :icon="User" @click="go('/users')">外部用户</el-button>
-      <el-button type="warning" :icon="Share" @click="go('/user-roles')">用户授权</el-button>
+      <el-button type="success" :icon="User" @click="go('/users')">用户管理</el-button>
       <el-button type="info" :icon="DataLine" @click="go('/ldap')">LDAP 组织树</el-button>
     </el-card>
   </div>
@@ -33,7 +32,7 @@ import { getDeptRefs } from '@/api/visibleDept'
 const router = useRouter()
 const cards = ref([
   { title: '部门数', value: '-', icon: OfficeBuilding, color: '#2b8' },
-  { title: '外部用户数', value: '-', icon: User, color: '#e6a23c' },
+  { title: '用户数', value: '-', icon: User, color: '#e6a23c' },
   { title: '角色数', value: '-', icon: Share, color: '#67c23a' },
   { title: '可见部门关联数', value: '-', icon: DataLine, color: '#409eff' }
 ])

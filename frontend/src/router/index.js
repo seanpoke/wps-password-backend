@@ -5,7 +5,7 @@ import Dashboard from '@/views/Dashboard.vue'
 import Dept from '@/views/Dept.vue'
 import User from '@/views/User.vue'
 import Role from '@/views/Role.vue'
-import UserRole from '@/views/UserRole.vue'
+import Doc from '@/views/Doc.vue'
 import { getToken } from '@/store/auth'
 
 
@@ -20,7 +20,7 @@ const routes = [
       { path: 'depts', name: 'depts', component: Dept, meta: { title: '部门管理' } },
       { path: 'users', name: 'users', component: User, meta: { title: '用户管理' } },
       { path: 'roles', name: 'roles', component: Role, meta: { title: '角色管理' } },
-      { path: 'user-roles', name: 'user-roles', component: UserRole, meta: { title: '用户授权' } }
+      { path: 'docs', name: 'docs', component: Doc, meta: { title: '文档管理' } }
     ]
   }
 ]

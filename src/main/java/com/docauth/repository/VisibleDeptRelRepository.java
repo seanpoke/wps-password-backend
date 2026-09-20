@@ -2,6 +2,9 @@ package com.docauth.repository;
 
 import com.docauth.entity.VisibleDeptRel;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -19,9 +22,13 @@ public interface VisibleDeptRelRepository extends JpaRepository<VisibleDeptRel, 
     /** Reverse lookup: which roles/users set this department as visible. */
     List<VisibleDeptRel> findByDeptId(Long deptId);
 
-    /** Cascade cleanup: remove all bindings of a role/user. */
-    void deleteByRelTypeAndRelId(String relType, Long relId);
+    /** Cascade cleanup: remove all bindings of a role/user (batch DML). */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from VisibleDeptRel v where v.relType = :relType and v.relId = :relId")
+    void deleteByRelTypeAndRelId(@Param("relType") String relType, @Param("relId") Long relId);
 
-    /** Cascade cleanup: remove bindings when a department is deleted. */
-    void deleteByDeptId(Long deptId);
+    /** Cascade cleanup: remove bindings when a department is deleted (batch DML). */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from VisibleDeptRel v where v.deptId = :deptId")
+    void deleteByDeptId(@Param("deptId") Long deptId);
 }

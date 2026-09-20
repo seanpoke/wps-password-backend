@@ -27,21 +27,26 @@
         <span class="node">
           <el-icon class="folder"><Folder /></el-icon>
           <span class="name">{{ data.name }}</span>
-          <el-popover v-if="refMap[data.id]" placement="right" :width="240" trigger="hover">
+          <el-popover v-if="refMap[data.id] && refMap[data.id].labels.length > 0" placement="right" :width="240" trigger="hover">
             <template #reference>
-              <span class="ref-badge" @click.stop><el-icon><View /></el-icon>{{ refMap[data.id].labels.length }}</span>
+              <span class="ref-badge" :title="'被 ' + refMap[data.id].labels.length + ' 个用户/角色设为可见'" @click.stop><el-icon><View /></el-icon>{{ refMap[data.id].labels.length }}</span>
             </template>
             <div class="ref-pop">
-              <div class="ref-pop-title">设为可见（{{ refMap[data.id].labels.length }}）</div>
-              <div v-for="g in refMap[data.id].labels" :key="g" class="ref-pop-item">• {{ g }}</div>
-              <div v-if="refMap[data.id].docAuth > 0" class="ref-pop-doc">文档授权 {{ refMap[data.id].docAuth }} 条</div>
+              <div class="ref-pop-title">被 {{ refMap[data.id].labels.length }} 个用户/角色设为可见</div>
+              <template v-if="refMap[data.id].users.length">
+                <div class="ref-pop-group">用户（{{ refMap[data.id].users.length }}）</div>
+                <div v-for="g in refMap[data.id].users" :key="'u-' + g" class="ref-pop-item">• {{ g }}</div>
+              </template>
+              <template v-if="refMap[data.id].roles.length">
+                <div class="ref-pop-group">角色（{{ refMap[data.id].roles.length }}）</div>
+                <div v-for="g in refMap[data.id].roles" :key="'r-' + g" class="ref-pop-item">• {{ g }}</div>
+              </template>
             </div>
           </el-popover>
           <span v-if="data.source === 'LOCAL'" class="ops">
             <el-button link type="primary" :icon="Edit" @click="openEdit(data)">编辑</el-button>
             <el-button link type="danger" :icon="Delete" @click="remove(data)">删除</el-button>
           </span>
-          <span v-if="data.source !== 'LOCAL'" class="readonly-tip">随 LDAP 同步</span>
         </span>
       </template>
     </el-tree>
@@ -129,7 +134,14 @@ const activeTab = ref('LOCAL')
 const deptRefs = ref([])
 const refMap = computed(() => {
   const m = {}
-  deptRefs.value.forEach(r => { m[r.deptId] = { labels: r.relLabels || [], docAuth: r.docAuthCount || 0 } })
+  deptRefs.value.forEach(r => {
+    m[r.deptId] = {
+      labels: r.relLabels || [],
+      users: r.userLabels || [],
+      roles: r.roleLabels || [],
+      docAuth: r.docAuthCount || 0
+    }
+  })
   return m
 })
 
@@ -352,12 +364,11 @@ async function applySelected() {
 
 <style scoped>
 .hd { display: flex; justify-content: space-between; align-items: center; }
-.readonly-tip { color: #999; font-size: 12px; }
 .ref-badge { display: inline-flex; align-items: center; gap: 2px; margin-left: 10px; padding: 0 6px; height: 18px; font-size: 12px; line-height: 1; color: #409eff; background: #ecf5ff; border-radius: 9px; cursor: pointer; flex-shrink: 0; }
 .ref-badge:hover { background: #d9ecff; }
 .ref-pop-title { font-size: 13px; font-weight: 600; color: #303133; margin-bottom: 6px; }
+.ref-pop-group { font-size: 12px; font-weight: 600; color: #909399; margin: 6px 0 2px; }
 .ref-pop-item { font-size: 12px; color: #606266; line-height: 1.8; }
-.ref-pop-doc { margin-top: 6px; padding-top: 6px; border-top: 1px solid #ebeef5; font-size: 12px; color: #e6a23c; }
 .node { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; padding-right: 8px; }
 .folder { color: #e6a23c; flex-shrink: 0; }
 .name { font-size: 14px; color: #303133; flex-shrink: 0; }

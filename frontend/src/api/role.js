@@ -15,19 +15,3 @@ export function updateRole(id, data) {
 export function deleteRole(id) {
   return request.delete(`/admin/roles/${id}`)
 }
-
-export function findUser(account) {
-  return request.get('/admin/users/find', { params: { account } })
-}
-
-export function listUserRoles(account) {
-  return request.get('/admin/user-roles', { params: { account } })
-}
-
-export function bindUserRole(data) {
-  return request.post('/admin/user-roles', data)
-}
-
-export function unbindUserRole(id) {
-  return request.delete(`/admin/user-roles/${id}`)
-}

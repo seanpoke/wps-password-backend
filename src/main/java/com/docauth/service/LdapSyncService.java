@@ -291,7 +291,6 @@ public class LdapSyncService {
         String pd = parentOf(n.getDn());
         Long did = pd != null ? sysDeptRepository.findByPathAndSource(pd, "LDAP").map(SysDept::getId).orElse(null) : null;
         u.setDeptId(did);
-        u.setStatus(1);
         if (u.getId() == null) {
             u.setPasswordHash("LDAP_NO_LOCAL_PASSWORD");
             u.setMustChangePwd(0);
@@ -305,14 +304,19 @@ public class LdapSyncService {
 
     private void assignDefaultRole(SysUser u) {
         List<SysRole> roles = adminService.listRoles();
-        SysRole userRole = roles.stream()
-                .filter(r -> "user".equalsIgnoreCase(r.getCode()))
-                .findFirst().orElse(null);
-        if (userRole != null) {
-            SysUserRole ur = new SysUserRole();
-            ur.setUserId(u.getId());
-            ur.setRoleId(userRole.getId());
-            sysUserRoleRepository.save(ur);
+        // 默认授予：普通用户(user) + 绿网员工(greenet)
+        List<Long> existing = sysUserRoleRepository.findByUserId(u.getId()).stream()
+                .map(SysUserRole::getRoleId).collect(java.util.stream.Collectors.toList());
+        for (String code : new String[]{"user", "greenet"}) {
+            SysRole role = roles.stream()
+                    .filter(r -> code.equalsIgnoreCase(r.getCode()))
+                    .findFirst().orElse(null);
+            if (role != null && !existing.contains(role.getId())) {
+                SysUserRole ur = new SysUserRole();
+                ur.setUserId(u.getId());
+                ur.setRoleId(role.getId());
+                sysUserRoleRepository.save(ur);
+            }
         }
     }
 

@@ -2,6 +2,9 @@ package com.docauth.repository;
 
 import com.docauth.entity.SysUserRole;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -14,9 +17,17 @@ public interface SysUserRoleRepository extends JpaRepository<SysUserRole, Long> 
 
     List<SysUserRole> findByRoleId(Long roleId);
 
-    void deleteByUserId(Long userId);
-
-    void deleteByRoleId(Long roleId);
-
     Optional<SysUserRole> findByUserIdAndRoleId(Long userId, Long roleId);
+
+    /**
+     * 批量 DML 删除，避免派生 delete 先把实体加载进持久化上下文再逐个 remove，
+     * 从而规避 "Row was updated or deleted by another transaction" 异常。
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from SysUserRole u where u.userId = :userId")
+    void deleteByUserId(@Param("userId") Long userId);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from SysUserRole u where u.roleId = :roleId")
+    void deleteByRoleId(@Param("roleId") Long roleId);
 }

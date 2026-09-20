@@ -1,5 +1,6 @@
 package com.docauth.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Data;
 
@@ -23,11 +24,12 @@ public class SysUser {
 
     private String name;
 
+    private String email;
+
+    @JsonIgnore
     private String passwordHash;
 
     private Long deptId;
-
-    private Integer status;
 
     private Integer mustChangePwd;
 
@@ -35,4 +37,7 @@ public class SysUser {
 
     @Column(insertable = false, updatable = false)
     private LocalDateTime createTime;
+
+    @Column(insertable = false, updatable = false)
+    private LocalDateTime updateTime;
 }

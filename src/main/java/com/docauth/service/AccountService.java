@@ -66,10 +66,10 @@ public class AccountService {
         String source = "LDAP";
         boolean needChangePwd = false;
 
-        // 2. LDAP 未命中，回退本地外部用户认证
+        // 2. LDAP 未命中，回退本地外部用户认证（落库即为有效账号）
         if (userContext == null) {
             SysUser local = sysUserRepository.findByAccount(account).orElse(null);
-            if (local == null || local.getStatus() == null || local.getStatus() == 0) {
+            if (local == null) {
                 throw new RuntimeException("认证失败：账号或密码错误");
             }
             // 仅本地账号走 BCrypt 校验；LDAP 账号即使落到本地表也不允许本地密码
@@ -86,11 +86,8 @@ public class AccountService {
             needChangePwd = local.getMustChangePwd() != null && local.getMustChangePwd() == 1;
             log.info("[login] 本地用户认证成功，账号: {}", account);
         } else {
-            // LDAP 同步用户若被禁用，拒绝登录
-            SysUser lu = sysUserRepository.findByAccount(account).orElse(null);
-            if (lu != null && (lu.getStatus() == null || lu.getStatus() == 0)) {
-                throw new RuntimeException("认证失败：该 LDAP 账号已被禁用");
-            }
+            // LDAP 同步用户落库即为有效账号，无需状态禁用校验
+            log.info("[login] LDAP 用户认证成功，账号: {}", account);
         }
 
         // 生成 token

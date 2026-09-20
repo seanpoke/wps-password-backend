@@ -11,6 +11,7 @@ import com.docauth.entity.SysDept;
 import com.docauth.entity.SysRole;
 import com.docauth.entity.SysUser;
 import com.docauth.entity.SysUserRole;
+import com.docauth.enums.UserSource;
 
 import com.docauth.service.AdminService;
 import com.docauth.service.LdapSyncService;
@@ -82,28 +83,60 @@ public class AdminController {
     /* ===================== 外部用户 ===================== */
 
     @GetMapping("/users")
-    @Operation(summary = "外部用户列表")
+    @Operation(summary = "用户列表（全量，兼容旧调用）")
     public ApiResponse<?> listUsers() {
         assertAdmin();
         return ApiResponse.success(adminService.listUsers());
     }
 
+    @GetMapping("/users/sources")
+    @Operation(summary = "用户来源枚举（LOCAL/LDAP，供前端筛选下拉动态获取）")
+    public ApiResponse<?> listUserSources() {
+        assertAdmin();
+        java.util.List<java.util.Map<String, String>> list = new java.util.ArrayList<>();
+        for (UserSource s : UserSource.values()) {
+            java.util.Map<String, String> m = new java.util.HashMap<>();
+            m.put("code", s.getCode());
+            m.put("label", s.getLabel());
+            list.add(m);
+        }
+        return ApiResponse.success(list);
+    }
+
+    @GetMapping("/users/page")
+    @Operation(summary = "用户分页查询（keyword 模糊匹配账号/姓名，source 来源枚举 LOCAL/LDAP，roleId 角色；页码从 1 开始）")
+    public ApiResponse<?> pageUsers(@RequestParam(defaultValue = "1") int page,
+                                    @RequestParam(defaultValue = "10") int size,
+                                    @RequestParam(required = false) String keyword,
+                                    @RequestParam(required = false) String source,
+                                    @RequestParam(required = false) Long roleId) {
+        assertAdmin();
+        if (source != null && !source.isBlank() && !UserSource.isValid(source)) {
+            return ApiResponse.error(400, "非法来源: " + source);
+        }
+        return ApiResponse.success(adminService.pageUsers(page, size, keyword, source, roleId));
+    }
+
     @PostMapping("/users")
-    @Operation(summary = "新建外部用户（初始密码，需首登改密）")
+    @Operation(summary = "新建本地用户（初始密码，需首登改密）")
     public ApiResponse<?> createUser(@RequestBody AdminRequests.CreateUser req) {
         assertAdmin();
         try {
-            return ApiResponse.success(adminService.createUser(req.getAccount(), req.getName(), req.getPassword(), req.getDeptId()));
+            return ApiResponse.success(adminService.createUser(req.getAccount(), req.getName(), req.getPassword(), req.getDeptId(), req.getEmail(), req.getVisibleDeptIds()));
         } catch (RuntimeException e) {
             return ApiResponse.error(400, e.getMessage());
         }
     }
 
     @PutMapping("/users/{id}")
-    @Operation(summary = "修改外部用户")
+    @Operation(summary = "修改用户（LOCAL：姓名/邮箱/部门/角色；LDAP：仅角色）")
     public ApiResponse<?> updateUser(@PathVariable Long id, @RequestBody AdminRequests.UpdateUser req) {
         assertAdmin();
-        return ApiResponse.success(adminService.updateUser(id, req.getName(), req.getDeptId(), req.getStatus()));
+        try {
+            return ApiResponse.success(adminService.updateUser(id, req.getName(), req.getDeptId(), req.getEmail(), req.getRoleIds(), req.getVisibleDeptIds()));
+        } catch (RuntimeException e) {
+            return ApiResponse.error(400, e.getMessage());
+        }
     }
 
     @DeleteMapping("/users/{id}")
@@ -157,6 +190,38 @@ public class AdminController {
         return ApiResponse.success(adminService.getDeptRefs());
     }
 
+    @GetMapping("/docs/page")
+    @Operation(summary = "文档分页查询（keyword 模糊匹配 uid/文件名/所属账号；页码从 1 开始）")
+    public ApiResponse<?> pageDocs(@RequestParam(defaultValue = "1") int page,
+                                   @RequestParam(defaultValue = "10") int size,
+                                   @RequestParam(required = false) String keyword) {
+        assertAdmin();
+        return ApiResponse.success(adminService.pageDocs(page, size, keyword));
+    }
+
+    @GetMapping("/docs/{id}")
+    @Operation(summary = "文档详情：基本信息 + 授权信息（部门/用户）")
+    public ApiResponse<?> docDetail(@PathVariable Long id) {
+        assertAdmin();
+        try {
+            return ApiResponse.success(adminService.docDetail(id));
+        } catch (RuntimeException e) {
+            return ApiResponse.error(400, e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/docs/{id}")
+    @Operation(summary = "删除文档及其授权关系")
+    public ApiResponse<?> deleteDoc(@PathVariable Long id) {
+        assertAdmin();
+        try {
+            adminService.deleteDoc(id);
+            return ApiResponse.success("ok");
+        } catch (RuntimeException e) {
+            return ApiResponse.error(400, e.getMessage());
+        }
+    }
+
     @GetMapping("/depts/{id}/refs")
     @Operation(summary = "reverse lookup: who set this dept visible")
     public ApiResponse<?> listDeptVisibleRefs(@PathVariable Long id) {
@@ -165,10 +230,10 @@ public class AdminController {
     }/* ===================== 角色 ===================== */
 
     @GetMapping("/roles")
-    @Operation(summary = "角色列表（按优先级升序）")
+    @Operation(summary = "角色列表（按优先级升序，附带可见部门权限）")
     public ApiResponse<?> listRoles() {
         assertAdmin();
-        return ApiResponse.success(adminService.listRoles());
+        return ApiResponse.success(adminService.listRolesWithVisible());
     }
 
     @PostMapping("/roles")
@@ -176,7 +241,7 @@ public class AdminController {
     public ApiResponse<?> createRole(@RequestBody AdminRequests.CreateRole req) {
         assertAdmin();
         try {
-            return ApiResponse.success(adminService.createRole(req.getCode(), req.getName(), req.getPriority(), req.getRemark()));
+            return ApiResponse.success(adminService.createRole(req.getCode(), req.getName(), req.getPriority(), req.getRemark(), req.getVisibleDeptIds()));
         } catch (RuntimeException e) {
             return ApiResponse.error(400, e.getMessage());
         }
@@ -186,7 +251,11 @@ public class AdminController {
     @Operation(summary = "修改角色定义")
     public ApiResponse<?> updateRole(@PathVariable Long id, @RequestBody AdminRequests.UpdateRole req) {
         assertAdmin();
-        return ApiResponse.success(adminService.updateRole(id, req.getName(), req.getPriority(), req.getRemark()));
+        try {
+            return ApiResponse.success(adminService.updateRole(id, req.getName(), req.getPriority(), req.getRemark(), req.getVisibleDeptIds()));
+        } catch (RuntimeException e) {
+            return ApiResponse.error(400, e.getMessage());
+        }
     }
 
     @DeleteMapping("/roles/{id}")
