@@ -14,6 +14,7 @@ import com.docauth.repository.SysUserRoleRepository;
 import com.docauth.repository.VisibleDeptRelRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +28,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.HashSet;
 
 /**
  * LDAP 同步服务
@@ -53,53 +56,33 @@ public class LdapSyncService {
     @Autowired
     private AdminService adminService;
 
-    // ============ 手动全量同步（初始化） ============
-    @Transactional
-    public String sync() {
-        log.info("[ldapSync] 开始同步 LDAP 部门与用户...");
-        List<LdapService.LdapTreeNode> all = ldapService.getAllLdapEntries();
-        Map<String, LdapService.LdapTreeNode> deptMap = new HashMap<>();
-        List<LdapService.LdapTreeNode> userNodes = new ArrayList<>();
-        for (LdapService.LdapTreeNode n : all) {
-            if (attr(n, "sAMAccountName") != null) {
-                userNodes.add(n);
-            } else {
-                deptMap.put(n.getDn().toLowerCase(), n);
-            }
-        }
-        int addedDept = 0, addedUser = 0;
-        for (LdapService.LdapTreeNode n : deptMap.values()) {
-            if (upsertDept(n, false) != null) addedDept++;
-        }
-        for (LdapService.LdapTreeNode n : userNodes) {
-            if (upsertUser(n) != null) addedUser++;
-        }
-        deleteGone(deptMap, userNodes);
-        ldapService.forceRefreshLdapCache();
-        String result = String.format("同步完成：部门+%d，用户+%d（已删除 LDAP 中消失的条目）", addedDept, addedUser);
-        log.info("[ldapSync] {}", result);
-        return result;
-    }
+    /** 自注入（经代理），使 persistSync/persistApply 的 @Transactional 在外部非事务方法中生效 */
+    @Autowired
+    @Lazy
+    private LdapSyncService self;
 
     private void deleteGone(Map<String, LdapService.LdapTreeNode> deptMap, List<LdapService.LdapTreeNode> userNodes) {
+        // 先收集 LDAP 中已消失的部门 / 用户 id，再按 IN 批量清理（一条 SQL 删多行）
+        List<Long> goneDeptIds = new ArrayList<>();
         for (SysDept d : sysDeptRepository.findBySource("LDAP")) {
-            if (!deptMap.containsKey(d.getPath().toLowerCase())) {
-                docShareRelRepository.markInvalidByTargetId(d.getId());
-                visibleDeptRelRepository.deleteByDeptId(d.getId());
-                sysDeptRepository.delete(d);
-            }
+            if (!deptMap.containsKey(d.getPath().toLowerCase())) goneDeptIds.add(d.getId());
         }
+        Set<String> ldapAccounts = new HashSet<>();
+        for (LdapService.LdapTreeNode n : userNodes) ldapAccounts.add(acc(n).toLowerCase());
+        List<Long> goneUserIds = new ArrayList<>();
         for (SysUser u : sysUserRepository.findBySource("LDAP")) {
-            boolean exists = false;
-            for (LdapService.LdapTreeNode n : userNodes) {
-                if (acc(n).equalsIgnoreCase(u.getAccount())) { exists = true; break; }
-            }
-            if (!exists) {
-                docShareRelRepository.markInvalidByTargetId(u.getId());
-                sysUserRoleRepository.deleteByUserId(u.getId());
-                visibleDeptRelRepository.deleteByRelTypeAndRelId("USER", u.getId());
-                sysUserRepository.delete(u);
-            }
+            if (!ldapAccounts.contains(u.getAccount().toLowerCase())) goneUserIds.add(u.getId());
+        }
+        if (!goneDeptIds.isEmpty()) {
+            docShareRelRepository.markInvalidByTargetIds(goneDeptIds);
+            visibleDeptRelRepository.deleteByDeptIds(goneDeptIds);
+            sysDeptRepository.deleteByIds(goneDeptIds);
+        }
+        if (!goneUserIds.isEmpty()) {
+            docShareRelRepository.markInvalidByTargetIds(goneUserIds);
+            sysUserRoleRepository.deleteByUserIds(goneUserIds);
+            visibleDeptRelRepository.deleteByRelTypeAndRelIds("USER", goneUserIds);
+            sysUserRepository.deleteByIds(goneUserIds);
         }
     }
 
@@ -116,10 +99,12 @@ public class LdapSyncService {
         Map<String, Long> dbDeptId = new HashMap<>();
         Map<String, String> dbDeptName = new HashMap<>();
         Map<String, Long> dbDeptParent = new HashMap<>();
+        Map<Long, String> dbDeptNameById = new HashMap<>();
         for (SysDept d : sysDeptRepository.findBySource("LDAP")) {
             dbDeptId.put(d.getPath().toLowerCase(), d.getId());
             dbDeptName.put(d.getPath().toLowerCase(), d.getName());
             dbDeptParent.put(d.getPath().toLowerCase(), d.getParentId());
+            dbDeptNameById.put(d.getId(), d.getName());
         }
         Map<String, Long> dbUserId = new HashMap<>();
         Map<String, String> dbUserName = new HashMap<>();
@@ -141,9 +126,19 @@ public class LdapSyncService {
                 node.setId(id);
                 String pd = parentOf(n.getDn());
                 Long expectedParent = pd != null ? dbDeptId.get(pd.toLowerCase()) : null;
-                boolean nameSame = Objects.equals(dbDeptName.get(n.getDn().toLowerCase()), ldapName);
+                String oldName = dbDeptName.get(n.getDn().toLowerCase());
+                String oldParentName = dbDeptParent.get(n.getDn().toLowerCase()) != null
+                        ? dbDeptNameById.get(dbDeptParent.get(n.getDn().toLowerCase())) : null;
+                String newParentName = pd != null ? ldapDeptName(deptByDn.get(pd.toLowerCase())) : null;
+                boolean nameSame = Objects.equals(oldName, ldapName);
                 boolean parentSame = Objects.equals(dbDeptParent.get(n.getDn().toLowerCase()), expectedParent);
                 node.setStatus(nameSame && parentSame ? "SAME" : "CHANGED");
+                if (!nameSame || !parentSame) {
+                    List<SyncDiffNode.ChangeItem> ch = new ArrayList<>();
+                    if (!nameSame) ch.add(new SyncDiffNode.ChangeItem("名称", oldName, ldapName));
+                    if (!parentSame) ch.add(new SyncDiffNode.ChangeItem("上级部门", oldParentName, newParentName));
+                    node.setChanges(ch);
+                }
             } else {
                 node.setStatus("NEW");
             }
@@ -162,9 +157,19 @@ public class LdapSyncService {
                 node.setId(id);
                 String pd = parentOf(n.getDn());
                 Long expectedDept = pd != null ? dbDeptId.get(pd.toLowerCase()) : null;
-                boolean nameSame = Objects.equals(dbUserName.get(a.toLowerCase()), ldapName);
+                String oldName = dbUserName.get(a.toLowerCase());
+                String oldDeptName = dbUserDept.get(a.toLowerCase()) != null
+                        ? dbDeptNameById.get(dbUserDept.get(a.toLowerCase())) : null;
+                String newDeptName = pd != null ? ldapDeptName(deptByDn.get(pd.toLowerCase())) : null;
+                boolean nameSame = Objects.equals(oldName, ldapName);
                 boolean deptSame = Objects.equals(dbUserDept.get(a.toLowerCase()), expectedDept);
                 node.setStatus(nameSame && deptSame ? "SAME" : "CHANGED");
+                if (!nameSame || !deptSame) {
+                    List<SyncDiffNode.ChangeItem> ch = new ArrayList<>();
+                    if (!nameSame) ch.add(new SyncDiffNode.ChangeItem("姓名", oldName, ldapName));
+                    if (!deptSame) ch.add(new SyncDiffNode.ChangeItem("所属部门", oldDeptName, newDeptName));
+                    node.setChanges(ch);
+                }
             } else {
                 node.setStatus("NEW");
             }
@@ -213,9 +218,15 @@ public class LdapSyncService {
     }
 
     // ============ 确认应用 ============
-    @Transactional
     public String apply(SyncApplyRequest req) {
-        List<LdapService.LdapTreeNode> all = ldapService.getAllLdapEntries();
+        List<LdapService.LdapTreeNode> all = ldapService.getAllLdapEntries(); // 远程：事务外获取
+        String result = self.persistApply(req, all);
+        ldapService.forceRefreshLdapCache(); // 远程：事务外刷新缓存
+        return result;
+    }
+
+    @Transactional
+    public String persistApply(SyncApplyRequest req, List<LdapService.LdapTreeNode> all) {
         Map<String, LdapService.LdapTreeNode> byDn = new HashMap<>();
         for (LdapService.LdapTreeNode n : all) byDn.put(n.getDn().toLowerCase(), n);
 
@@ -238,7 +249,6 @@ public class LdapSyncService {
         if (req.getRemoveUserIds() != null) {
             for (Long id : req.getRemoveUserIds()) { removeUser(id); removed++; }
         }
-        ldapService.forceRefreshLdapCache();
         return String.format("同步确认完成：新增/更新 %d 条，移除 %d 条", upserted, removed);
     }
 
@@ -292,7 +302,7 @@ public class LdapSyncService {
         Long did = pd != null ? sysDeptRepository.findByPathAndSource(pd, "LDAP").map(SysDept::getId).orElse(null) : null;
         u.setDeptId(did);
         if (u.getId() == null) {
-            u.setPasswordHash("LDAP_NO_LOCAL_PASSWORD");
+            u.setPasswordHash(null); // LDAP 用户不本地保存密码，登录统一走 LDAP 校验
             u.setMustChangePwd(0);
             sysUserRepository.save(u);
             assignDefaultRole(u);
@@ -304,19 +314,17 @@ public class LdapSyncService {
 
     private void assignDefaultRole(SysUser u) {
         List<SysRole> roles = adminService.listRoles();
-        // 默认授予：普通用户(user) + 绿网员工(greenet)
         List<Long> existing = sysUserRoleRepository.findByUserId(u.getId()).stream()
                 .map(SysUserRole::getRoleId).collect(java.util.stream.Collectors.toList());
-        for (String code : new String[]{"user", "greenet"}) {
-            SysRole role = roles.stream()
-                    .filter(r -> code.equalsIgnoreCase(r.getCode()))
-                    .findFirst().orElse(null);
-            if (role != null && !existing.contains(role.getId())) {
-                SysUserRole ur = new SysUserRole();
-                ur.setUserId(u.getId());
-                ur.setRoleId(role.getId());
-                sysUserRoleRepository.save(ur);
-            }
+        // LDAP 员工仅授予「绿网员工(greenet)」角色，不再授予「普通用户(user)」
+        SysRole greenet = roles.stream()
+                .filter(r -> "greenet".equalsIgnoreCase(r.getCode()))
+                .findFirst().orElse(null);
+        if (greenet != null && !existing.contains(greenet.getId())) {
+            SysUserRole ur = new SysUserRole();
+            ur.setUserId(u.getId());
+            ur.setRoleId(greenet.getId());
+            sysUserRoleRepository.save(ur);
         }
     }
 
@@ -361,5 +369,11 @@ public class LdapSyncService {
         if (dn == null || dn.isEmpty()) return null;
         int idx = dn.indexOf(',');
         return idx < 0 ? null : dn.substring(idx + 1);
+    }
+
+    /** 取 LDAP 部门节点展示名（与 preview 组装节点同名逻辑一致） */
+    private static String ldapDeptName(LdapService.LdapTreeNode n) {
+        if (n == null) return null;
+        return firstNonNull(attr(n, "name"), attr(n, "ou"), extractCn(n.getDn()));
     }
 }

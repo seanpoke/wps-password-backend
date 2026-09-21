@@ -24,8 +24,6 @@ public class SysUser {
 
     private String name;
 
-    private String email;
-
     @JsonIgnore
     private String passwordHash;
 

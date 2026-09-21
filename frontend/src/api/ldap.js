@@ -1,19 +1,8 @@
 import request from '@/utils/request'
 
+/** 部门管理-LDAP 页签：直接读取内存缓存中的 LDAP 组织树（部门+用户，按来源+根节点分组） */
 export function ldapTree() {
   return request.get('/admin/ldap-tree')
-}
-
-export function refreshLdap() {
-  return request.post('/admin/ldap-tree/refresh')
-}
-
-export function searchLdap(keyword) {
-  return request.get('/admin/ldap-search', { params: { keyword } })
-}
-
-export function syncLdap() {
-  return request.post('/admin/ldap-sync')
 }
 
 /** 同步预览：返回 DB 与 LDAP 的合并 diff 树（NEW/GONE/CHANGED/SAME） */

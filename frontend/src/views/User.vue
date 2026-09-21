@@ -30,9 +30,6 @@
         <el-table-column label="部门" min-width="120" show-overflow-tooltip>
           <template #default="{ row }">{{ row.deptName || '-' }}</template>
         </el-table-column>
-        <el-table-column label="邮箱" min-width="160" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.email || '-' }}</template>
-        </el-table-column>
         <el-table-column label="角色" min-width="160">
           <template #default="{ row }">
             <template v-if="row.roles && row.roles.length">
@@ -79,7 +76,6 @@
         </el-form-item>
         <template v-if="editRow && editRow.source === 'LOCAL'">
           <el-form-item label="姓名"><el-input v-model="editForm.name" /></el-form-item>
-          <el-form-item label="邮箱"><el-input v-model="editForm.email" placeholder="选填" /></el-form-item>
           <el-form-item label="部门">
             <el-tree-select
               v-model="editForm.deptId"
@@ -135,7 +131,6 @@
         <el-form-item label="账号"><el-input v-model="addForm.account" placeholder="登录账号" /></el-form-item>
         <el-form-item label="姓名"><el-input v-model="addForm.name" /></el-form-item>
         <el-form-item label="密码"><el-input v-model="addForm.password" type="password" show-password placeholder="留空则默认为 账号@123456（首登需改密）；填写则不需要改密" /></el-form-item>
-        <el-form-item label="邮箱"><el-input v-model="addForm.email" placeholder="选填" /></el-form-item>
         <el-form-item label="部门">
           <el-tree-select
             v-model="addForm.deptId"
@@ -292,13 +287,12 @@ const visibleDeptTree = computed(() => {
 // ---- 编辑 ----
 const editDialog = ref(false)
 const editRow = ref(null)
-const editForm = ref({ name: '', email: '', deptId: null, roleIds: [], visibleDeptIds: [] })
+const editForm = ref({ name: '', deptId: null, roleIds: [], visibleDeptIds: [] })
 
 async function openEdit(row) {
   editRow.value = row
   editForm.value = {
     name: row.name || '',
-    email: row.email || '',
     deptId: row.deptId,
     roleIds: (row.roles || []).map(r => r.id),
     visibleDeptIds: []
@@ -319,7 +313,7 @@ async function saveEdit() {
     // LDAP 用户后端只应用 roleIds + 可见部门权限；LOCAL 提交除账号/来源外的全部字段
     const payload = row.source === 'LDAP'
       ? { roleIds: editForm.value.roleIds, visibleDeptIds: editForm.value.visibleDeptIds }
-      : { name: editForm.value.name, email: editForm.value.email, deptId: editForm.value.deptId, roleIds: editForm.value.roleIds, visibleDeptIds: editForm.value.visibleDeptIds }
+      : { name: editForm.value.name, deptId: editForm.value.deptId, roleIds: editForm.value.roleIds, visibleDeptIds: editForm.value.visibleDeptIds }
     await updateUser(row.id, payload)
     ElMessage.success('保存成功')
     editDialog.value = false
@@ -339,10 +333,10 @@ function onVisibleChange(val) {
 
 // ---- 新建 ----
 const addDialog = ref(false)
-const addForm = ref({ account: '', name: '', password: '', email: '', deptId: null, visibleDeptIds: [] })
+const addForm = ref({ account: '', name: '', password: '', deptId: null, visibleDeptIds: [] })
 
 function openAdd() {
-  addForm.value = { account: '', name: '', password: '', email: '', deptId: null, visibleDeptIds: [] }
+  addForm.value = { account: '', name: '', password: '', deptId: null, visibleDeptIds: [] }
   addDialog.value = true
 }
 

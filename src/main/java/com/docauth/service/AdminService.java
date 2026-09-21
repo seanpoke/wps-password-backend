@@ -48,7 +48,6 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Slf4j
 @Service
-@Transactional
 public class AdminService {
 
     @Autowired
@@ -83,10 +82,12 @@ public class AdminService {
 
     /* ===================== 部门 ===================== */
 
+    @Transactional(readOnly = true)
     public List<SysDept> listDepts() {
         return sysDeptRepository.findAll();
     }
 
+    @Transactional
     public SysDept createDept(String name, Long parentId) {
         SysDept parent = parentId == null ? null : sysDeptRepository.findById(parentId).orElse(null);
         String path = "ou=" + name;
@@ -101,6 +102,7 @@ public class AdminService {
         return sysDeptRepository.save(d);
     }
 
+    @Transactional
     public SysDept updateDept(Long id, String name) {
         SysDept d = sysDeptRepository.findById(id).orElseThrow(() -> new RuntimeException("部门不存在"));
         String oldPath = d.getPath();
@@ -128,6 +130,7 @@ public class AdminService {
         return d;
     }
 
+    @Transactional
     public void deleteDept(Long id) {
         SysDept d = sysDeptRepository.findById(id).orElseThrow(() -> new RuntimeException("部门不存在"));
         if (!"LOCAL".equals(d.getSource()) && d.getSource() != null) {
@@ -158,6 +161,7 @@ public class AdminService {
 
     /* ===================== 外部用户 ===================== */
 
+    @Transactional(readOnly = true)
     public List<SysUser> listUsers() {
         return sysUserRepository.findAll();
     }
@@ -166,6 +170,7 @@ public class AdminService {
      * 用户管理分页查询（后端分页）。
      * keyword 模糊匹配账号/姓名；source 精确匹配来源（LOCAL/LDAP）；roleId 按角色过滤（子查询）。
      */
+    @Transactional(readOnly = true)
     public PageResult<UserPageVo> pageUsers(int page, int size, String keyword, String source, Long roleId) {
         Specification<SysUser> spec = (root, query, cb) -> {
             List<jakarta.persistence.criteria.Predicate> ps = new ArrayList<>();
@@ -203,7 +208,6 @@ public class AdminService {
             vo.setId(u.getId());
             vo.setAccount(u.getAccount());
             vo.setName(u.getName());
-            vo.setEmail(u.getEmail());
             vo.setDeptId(u.getDeptId());
             vo.setDeptName(u.getDeptId() == null ? null : deptNames.get(u.getDeptId()));
             vo.setSource(u.getSource());
@@ -220,7 +224,8 @@ public class AdminService {
         return new PageResult<>(rows, p.getTotalElements(), safePage, safeSize);
     }
 
-    public SysUser createUser(String account, String name, String password, Long deptId, String email, List<Long> visibleDeptIds) {
+    @Transactional
+    public SysUser createUser(String account, String name, String password, Long deptId, List<Long> visibleDeptIds) {
         if (sysUserRepository.existsByAccount(account)) {
             throw new RuntimeException("账号已存在");
         }
@@ -230,7 +235,6 @@ public class AdminService {
         SysUser u = new SysUser();
         u.setAccount(account);
         u.setName(name);
-        u.setEmail(email);
         // 密码留空时使用默认密码：账号@123456，且要求首登改密；填写了密码则不需要改密
         boolean useDefaultPwd = (password == null || password.trim().isEmpty());
         String finalPwd = useDefaultPwd ? account + "@123456" : password;
@@ -254,10 +258,11 @@ public class AdminService {
 
     /**
      * 修改用户。
-     * LOCAL 来源：姓名/邮箱/部门/角色均可改（账号、来源不可改）。
+     * LOCAL 来源：姓名/部门/角色均可改（账号、来源不可改）。
      * LDAP 来源：仅允许调整角色，其余字段随同步维护。
      */
-    public SysUser updateUser(Long id, String name, Long deptId, String email, List<Long> roleIds, List<Long> visibleDeptIds) {
+    @Transactional
+    public SysUser updateUser(Long id, String name, Long deptId, List<Long> roleIds, List<Long> visibleDeptIds) {
         SysUser u = sysUserRepository.findById(id).orElseThrow(() -> new RuntimeException("用户不存在"));
         if (UserSource.LDAP.name().equals(u.getSource())) {
             applyRoleIds(u, roleIds);
@@ -267,9 +272,6 @@ public class AdminService {
         }
         if (name != null) {
             u.setName(name);
-        }
-        if (email != null) {
-            u.setEmail(email);
         }
         if (deptId != null) {
             u.setDeptId(deptId);
@@ -333,6 +335,7 @@ public class AdminService {
         }
     }
 
+    @Transactional
     public void deleteUser(Long id) {
         SysUser u = sysUserRepository.findById(id).orElseThrow(() -> new RuntimeException("用户不存在"));
         // 级联清理：用户角色 + 用户权限组绑定 + 文档授权(type=1)
@@ -342,6 +345,7 @@ public class AdminService {
         sysUserRepository.delete(u);
     }
 
+    @Transactional
     public void resetPassword(Long id, String newPassword) {
         SysUser u = sysUserRepository.findById(id).orElseThrow(() -> new RuntimeException("用户不存在"));
         // 不填新密码则恢复初始密码：账号@123456，且要求首登改密；填写了密码则不需要改密
@@ -352,6 +356,7 @@ public class AdminService {
         sysUserRepository.save(u);
     }
 
+    @Transactional(readOnly = true)
     public SysUser findUserByAccount(String account) {
         if (account == null || account.isEmpty()) {
             return null;
@@ -361,11 +366,13 @@ public class AdminService {
 
     /* ===================== 角色 ===================== */
 
+    @Transactional(readOnly = true)
     public List<SysRole> listRoles() {
         return sysRoleRepository.findAllByOrderByPriorityAsc();
     }
 
     /** 角色列表（附带可见部门权限名称；deptId=0 显示为“全部”） */
+    @Transactional(readOnly = true)
     public List<RoleListVo> listRolesWithVisible() {
         List<SysRole> roles = sysRoleRepository.findAllByOrderByPriorityAsc();
         List<RoleListVo> res = new java.util.ArrayList<>();
@@ -391,6 +398,7 @@ public class AdminService {
         return res;
     }
 
+    @Transactional
     public SysRole createRole(String code, String name, Integer priority, String remark, List<Long> visibleDeptIds) {
         if (code == null || code.isEmpty()) {
             throw new RuntimeException("角色编码不能为空");
@@ -409,6 +417,7 @@ public class AdminService {
         return saved;
     }
 
+    @Transactional
     public SysRole updateRole(Long id, String name, Integer priority, String remark, List<Long> visibleDeptIds) {
         SysRole r = sysRoleRepository.findById(id).orElseThrow(() -> new RuntimeException("角色不存在"));
         if ("admin".equalsIgnoreCase(r.getCode())) {
@@ -429,6 +438,7 @@ public class AdminService {
         return r;
     }
 
+    @Transactional
     public void deleteRole(Long id) {
         SysRole r = sysRoleRepository.findById(id).orElse(null);
         if (r == null) {
@@ -444,6 +454,7 @@ public class AdminService {
 
     /* ===================== 用户-角色绑定 ===================== */
 
+    @Transactional(readOnly = true)
     public List<SysRole> listUserRoles(String account) {
         SysUser u = sysUserRepository.findByAccount(account).orElse(null);
         if (u == null) {
@@ -456,6 +467,7 @@ public class AdminService {
         return roles;
     }
 
+    @Transactional
     public SysUserRole bindUserRole(String account, Long roleId) {
         SysUser u = sysUserRepository.findByAccount(account).orElse(null);
         if (u == null) {
@@ -473,18 +485,21 @@ public class AdminService {
         return sysUserRoleRepository.save(ur);
     }
 
+    @Transactional
     public void unbindUserRole(Long id) {
         sysUserRoleRepository.deleteById(id);
     }
 
     /* =====================     /* ===================== visible dept scope (no group) ===================== */
 
+    @Transactional(readOnly = true)
     public List<SysDept> listVisibleDepts(String relType, Long relId) {
         List<Long> deptIds = visibleDeptRelRepository.findByRelTypeAndRelId(relType, relId)
                 .stream().map(VisibleDeptRel::getDeptId).collect(Collectors.toList());
         return sysDeptRepository.findAllById(deptIds);
     }
 
+    @Transactional
     public VisibleDeptRel addVisibleDept(String relType, Long relId, Long deptId) {
         if (!sysDeptRepository.existsById(deptId)) {
             throw new RuntimeException("dept not exist");
@@ -499,11 +514,13 @@ public class AdminService {
         return visibleDeptRelRepository.save(r);
     }
 
+    @Transactional
     public void deleteVisibleDept(String relType, Long relId, Long deptId) {
         visibleDeptRelRepository.findByRelTypeAndRelIdAndDeptId(relType, relId, deptId)
                 .ifPresent(visibleDeptRelRepository::delete);
     }
 
+    @Transactional(readOnly = true)
     public List<DeptVisibleRef> listDeptVisibleRefs(Long deptId) {
         List<DeptVisibleRef> refs = new ArrayList<>();
         for (VisibleDeptRel r : visibleDeptRelRepository.findByDeptId(deptId)) {
@@ -512,6 +529,7 @@ public class AdminService {
         return refs;
     }
 
+    @Transactional(readOnly = true)
     public List<DeptRefVo> getDeptRefs() {
         Map<Long, List<String>> relLabelsMap = new HashMap<>();
         Map<Long, List<String>> userLabelsMap = new HashMap<>();
@@ -551,6 +569,7 @@ public class AdminService {
      * 文档分页查询（后端分页，按创建时间倒序）。
      * keyword 模糊匹配 uid / 文件名 / 所属账号。
      */
+    @Transactional(readOnly = true)
     public PageResult<DocPageVo> pageDocs(int page, int size, String keyword) {
         Specification<DocInfo> spec = (root, query, cb) -> {
             List<jakarta.persistence.criteria.Predicate> ps = new ArrayList<>();
@@ -572,6 +591,7 @@ public class AdminService {
     }
 
     /** 文档详情：基本信息 + 有效授权信息（部门/用户） */
+    @Transactional(readOnly = true)
     public DocDetailVo docDetail(Long id) {
         DocInfo d = docInfoRepository.findById(id).orElseThrow(() -> new RuntimeException("文档不存在"));
         List<DocAuthVo> auths = new ArrayList<>();
@@ -589,6 +609,7 @@ public class AdminService {
     }
 
     /** 删除文档及其全部授权关系 */
+    @Transactional
     public void deleteDoc(Long id) {
         DocInfo d = docInfoRepository.findById(id).orElseThrow(() -> new RuntimeException("文档不存在"));
         docShareRelRepository.deleteAll(docShareRelRepository.findByUid(d.getUid()));
@@ -599,13 +620,5 @@ public class AdminService {
 
     public List<LdapNodeDTO> ldapTree() {
         return ldapService.getLdapTreeWithAuth(null);
-    }
-
-    public void refreshLdap() {
-        ldapService.forceRefreshLdapCache();
-    }
-
-    public List<LdapNodeDTO> searchLdap(String keyword) {
-        return ldapService.searchLdapUsers(keyword);
     }
 }

@@ -122,18 +122,18 @@ public class AdminController {
     public ApiResponse<?> createUser(@RequestBody AdminRequests.CreateUser req) {
         assertAdmin();
         try {
-            return ApiResponse.success(adminService.createUser(req.getAccount(), req.getName(), req.getPassword(), req.getDeptId(), req.getEmail(), req.getVisibleDeptIds()));
+            return ApiResponse.success(adminService.createUser(req.getAccount(), req.getName(), req.getPassword(), req.getDeptId(), req.getVisibleDeptIds()));
         } catch (RuntimeException e) {
             return ApiResponse.error(400, e.getMessage());
         }
     }
 
     @PutMapping("/users/{id}")
-    @Operation(summary = "修改用户（LOCAL：姓名/邮箱/部门/角色；LDAP：仅角色）")
+    @Operation(summary = "修改用户（LOCAL：姓名/部门/角色；LDAP：仅角色）")
     public ApiResponse<?> updateUser(@PathVariable Long id, @RequestBody AdminRequests.UpdateUser req) {
         assertAdmin();
         try {
-            return ApiResponse.success(adminService.updateUser(id, req.getName(), req.getDeptId(), req.getEmail(), req.getRoleIds(), req.getVisibleDeptIds()));
+            return ApiResponse.success(adminService.updateUser(id, req.getName(), req.getDeptId(), req.getRoleIds(), req.getVisibleDeptIds()));
         } catch (RuntimeException e) {
             return ApiResponse.error(400, e.getMessage());
         }
@@ -312,33 +312,6 @@ public class AdminController {
     public ApiResponse<?> ldapTree() {
         assertAdmin();
         return ApiResponse.success(adminService.ldapTree());
-    }
-
-    @PostMapping("/ldap-tree/refresh")
-    @Operation(summary = "强制刷新 LDAP 树缓存")
-    public ApiResponse<?> refreshLdap() {
-        assertAdmin();
-        adminService.refreshLdap();
-        return ApiResponse.success("刷新成功");
-    }
-
-    @GetMapping("/ldap-search")
-    @Operation(summary = "搜索 LDAP 用户（用于内部账号绑定选人）")
-    public ApiResponse<?> searchLdap(@RequestParam String keyword) {
-        assertAdmin();
-        return ApiResponse.success(adminService.searchLdap(keyword));
-    }
-
-    @PostMapping("/ldap-sync")
-    @Operation(summary = "立即触发一次 LDAP 同步（部门/用户全量同步，用于首次初始化）")
-    public ApiResponse<?> ldapSync() {
-        assertAdmin();
-        try {
-            return ApiResponse.success(ldapSyncService.sync());
-        } catch (RuntimeException e) {
-            log.error("[ldapSync] 同步失败: {}", e.getMessage(), e);
-            return ApiResponse.error(500, "同步失败：" + e.getMessage());
-        }
     }
 
     @GetMapping("/ldap-sync/preview")

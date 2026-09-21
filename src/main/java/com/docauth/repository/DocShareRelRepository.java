@@ -18,6 +18,11 @@ public interface DocShareRelRepository extends JpaRepository<DocShareRel, Long> 
     @Query("UPDATE DocShareRel r SET r.invalid = 1 WHERE r.targetId = :tid")
     void markInvalidByTargetId(@Param("tid") Long tid);
 
+    /** 批量标记失效（IN，一条 SQL 覆盖多个目标） */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE DocShareRel r SET r.invalid = 1 WHERE r.targetId IN :ids")
+    void markInvalidByTargetIds(@Param("ids") List<Long> ids);
+
     /** 物理删除某目标类型的授权关系（同步删除/更新时彻底清理） */
     void deleteByTargetIdAndType(@Param("tid") Long tid, @Param("type") int type);
 

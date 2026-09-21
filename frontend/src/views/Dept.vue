@@ -5,7 +5,6 @@
         <span>部门管理</span>
         <div>
           <el-input v-model="kw" placeholder="搜索部门名" style="width:180px" :prefix-icon="Search" clearable @clear="load" @keyup.enter="load" />
-          <el-button v-if="activeTab === 'LDAP'" type="warning" :icon="Refresh" :loading="compareLoading" @click="openCompare">同步对比</el-button>
           <el-button v-if="activeTab === 'LOCAL'" type="primary" :icon="Plus" @click="openAdd">新建部门</el-button>
         </div>
       </div>
@@ -52,48 +51,6 @@
     </el-tree>
     <el-empty v-if="!loading && !treeData.length" description="暂无部门" />
 
-    <!-- 同步对比抽屉 -->
-    <el-drawer v-model="compareOpen" title="LDAP 同步对比" size="48%" direction="rtl">
-      <div v-loading="compareLoading" class="cmp">
-        <div class="cmp-bar">
-          <el-tag type="success" :effect="allTypeSelected('NEW') ? 'dark' : 'light'" class="tag-btn" @click="toggleType('NEW')">新增 {{ counts.NEW }}</el-tag>
-          <el-tag type="warning" :effect="allTypeSelected('CHANGED') ? 'dark' : 'light'" class="tag-btn" @click="toggleType('CHANGED')">变更 {{ counts.CHANGED }}</el-tag>
-          <el-tag type="danger" :effect="allTypeSelected('GONE') ? 'dark' : 'light'" class="tag-btn" @click="toggleType('GONE')">已消失 {{ counts.GONE }}</el-tag>
-          <el-tag type="info">未变 {{ counts.SAME }}</el-tag>
-          <span class="spacer" />
-          <el-button size="small" @click="selectAll('none')">清空</el-button>
-        </div>
-
-        <el-tree
-          v-if="previewTree.length"
-          :data="previewTree"
-          :props="{ label: 'name', children: 'children' }"
-          default-expand-all
-          :expand-on-click-node="false"
-          class="cmp-list"
-        >
-          <template #default="{ data }">
-            <span class="cmp-row" :class="{ gone: data.status === 'GONE' }">
-              <el-checkbox v-model="selected[keyOf(data)]" :disabled="data.status === 'SAME'" />
-              <el-icon v-if="data.type === 0" class="fd"><FolderOpened /></el-icon>
-              <el-icon v-else class="fd"><User /></el-icon>
-              <span class="nm">{{ data.name }}</span>
-              <span v-if="data.account" class="acc">{{ data.account }}</span>
-              <el-tag size="small" :type="tagType(data.status)" class="st">
-                {{ statusText(data.status) }}
-              </el-tag>
-              <span class="dn" v-if="data.dn">{{ data.dn }}</span>
-            </span>
-          </template>
-        </el-tree>
-        <el-empty v-else description="当前数据库与 LDAP 完全一致，无需同步" />
-      </div>
-      <template #footer>
-        <el-button @click="compareOpen = false">关闭</el-button>
-        <el-button type="primary" :loading="applying" @click="applySelected">应用所选</el-button>
-      </template>
-    </el-drawer>
-
     <el-dialog v-model="dialog" :title="editing ? '修改部门' : '新建部门'" width="420px">
       <el-form :model="form" label-width="90px">
         <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
@@ -121,11 +78,11 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { Search, Plus, Edit, Delete, Folder, Refresh, FolderOpened, User, View } from '@element-plus/icons-vue'
+import { ref, computed, onMounted } from 'vue'
+import { Search, Plus, Edit, Delete, Folder, View } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listDepts, createDept, updateDept, deleteDept, listDeptRefs } from '@/api/dept'
-import { previewSync, applySync } from '@/api/ldap'
+import { ldapTree } from '@/api/ldap'
 
 const loading = ref(false)
 const list = ref([])
@@ -146,7 +103,27 @@ const refMap = computed(() => {
 })
 
 const localCount = computed(() => list.value.filter(x => x.source === 'LOCAL').length)
-const ldapCount = computed(() => list.value.filter(x => x.source === 'LDAP').length)
+
+// LDAP 页签直接来自内存缓存（deptNodeCache），不再读 DB 的 source=LDAP 行
+const ldapNodes = ref([])
+const ldapTreeData = computed(() => {
+  // 用 DB 中已同步的 LDAP 部门 path(dn) -> id 映射，保留可见性角标
+  const dnToId = {}
+  list.value.filter(x => x.source === 'LDAP' && x.path).forEach(d => { dnToId[d.path.toLowerCase()] = d.id })
+  const build = (dto) => ({
+    id: dnToId[(dto.dn || '').toLowerCase()] ?? dto.dn,
+    name: dto.name,
+    source: 'LDAP',
+    children: (dto.deptList || []).map(build)
+  })
+  return (ldapNodes.value || []).map(build)
+})
+function countDepts(nodes) {
+  let c = 0
+  for (const n of nodes) { c++; if (n.children) c += countDepts(n.children) }
+  return c
+}
+const ldapCount = computed(() => countDepts(ldapTreeData.value))
 
 /** 父部门候选树：仅 LOCAL；编辑时排除自身及其子孙（防止把自己挂到自己下面） */
 const parentTree = computed(() => {
@@ -216,7 +193,10 @@ function filterDeptTree(nodes, k) {
 
 const treeData = computed(() => {
   const k = kw.value.trim()
-  const items = list.value.filter(x => x.source === activeTab.value)
+  if (activeTab.value === 'LDAP') {
+    return filterDeptTree(ldapTreeData.value, k)
+  }
+  const items = list.value.filter(x => x.source === 'LOCAL' || !x.source)
   return filterDeptTree(buildDeptTree(items), k)
 })
 
@@ -228,9 +208,10 @@ const form = ref({ name: '', parentId: null })
 async function load() {
   loading.value = true
   try {
-    const [deptRes, refRes] = await Promise.all([listDepts(), listDeptRefs()])
+    const [deptRes, refRes, ldapRes] = await Promise.all([listDepts(), listDeptRefs(), ldapTree()])
     list.value = deptRes.data || []
     deptRefs.value = refRes.data || []
+    ldapNodes.value = ldapRes.data || []
   } finally { loading.value = false }
 }
 
@@ -272,94 +253,6 @@ async function remove(row) {
 }
 
 onMounted(load)
-
-// ===== 同步对比抽屉 =====
-const compareOpen = ref(false)
-const compareLoading = ref(false)
-const applying = ref(false)
-const previewTree = ref([])
-const flat = ref([])
-const selected = reactive({})
-
-function keyOf(n) {
-  return n.type + ':' + (n.dn || n.account)
-}
-function statusText(s) {
-  return { NEW: '新增', CHANGED: '变更', GONE: '已消失', SAME: '未变' }[s] || s
-}
-function tagType(s) {
-  return { NEW: 'success', CHANGED: 'warning', GONE: 'danger', SAME: 'info' }[s] || 'info'
-}
-const counts = computed(() => {
-  const c = { NEW: 0, CHANGED: 0, GONE: 0, SAME: 0 }
-  flat.value.forEach((r) => { if (c[r.node.status] != null) c[r.node.status]++ })
-  return c
-})
-
-function flatten(nodes, depth, acc) {
-  for (const n of nodes || []) {
-    acc.push({ node: n, depth, key: keyOf(n) })
-    flatten(n.children, depth + 1, acc)
-  }
-}
-
-async function openCompare() {
-  compareOpen.value = true
-  compareLoading.value = true
-  try {
-    const res = await previewSync()
-    previewTree.value = res.data || []
-    const list = []
-    flatten(previewTree.value, 0, list)
-    flat.value = list
-    list.forEach((r) => { selected[r.key] = r.node.status === 'NEW' || r.node.status === 'CHANGED' })
-  } catch (e) {} finally {
-    compareLoading.value = false
-  }
-}
-
-function selectAll(mode) {
-  flat.value.forEach((r) => { selected[r.key] = false })
-}
-
-/** 该类型是否已全部勾选（用于标签高亮） */
-function allTypeSelected(status) {
-  const rows = flat.value.filter(r => r.node.status === status)
-  return rows.length > 0 && rows.every(r => selected[r.key])
-}
-
-/** 点击统计标签：全选/取消该类型 */
-function toggleType(status) {
-  const rows = flat.value.filter(r => r.node.status === status)
-  if (!rows.length) return
-  const allSelected = rows.every(r => selected[r.key])
-  rows.forEach(r => { selected[r.key] = !allSelected })
-}
-
-async function applySelected() {
-  const addDns = []
-  const removeDeptIds = []
-  const removeUserIds = []
-  flat.value.forEach((r) => {
-    if (!selected[r.key]) return
-    const n = r.node
-    if (n.status === 'NEW' || n.status === 'CHANGED') addDns.push(n.dn)
-    else if (n.status === 'GONE' && n.type === 0) removeDeptIds.push(n.id)
-    else if (n.status === 'GONE' && n.type === 1) removeUserIds.push(n.id)
-  })
-  if (!addDns.length && !removeDeptIds.length && !removeUserIds.length) {
-    return ElMessage.warning('请先勾选要同步的项')
-  }
-  applying.value = true
-  try {
-    const res = await applySync({ addDns, removeDeptIds, removeUserIds })
-    ElMessage.success(res.data || '同步完成')
-    await openCompare()
-    await load()
-  } catch (e) {} finally {
-    applying.value = false
-  }
-}
 </script>
 
 <style scoped>

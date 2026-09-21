@@ -32,52 +32,17 @@ import java.util.concurrent.ConcurrentHashMap;
 public class LdapService {
 
     /**
-     * 本地内存缓存: key=baseDn, value=缓存数据(包含节点列表和过期时间)
+     * 部门节点内存缓存：按 来源+根节点 分组缓存
+     * key = source + ":" + rootDn.toLowerCase()（如 "LDAP:ou=org,dc=x"）；
+     * value = 该根节点下的整棵部门/用户树及过期时间
      */
-    private final ConcurrentHashMap<String, CacheEntry> ldapCache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, CacheEntry> deptNodeCache = new ConcurrentHashMap<>();
     @Autowired
     private LdapTemplate ldapTemplate;
     @Autowired
     private DocShareRelRepository docShareRelRepository;
     @Autowired
     private ConfigService configService;
-
-    /**
-     * 查询用户的 LDAP DN
-     *
-     * @param account 用户名（sAMAccountName）
-     * @return 用户的完整 DN，如果未找到则返回 null
-     */
-    public String getUserDn(String account) {
-        try {
-            log.info("查询用户 {} 的 LDAP DN", account);
-
-            // 使用 sAMAccountName 查询用户 DN
-            var query = LdapQueryBuilder.query()
-                    .base(configService.getLdapBase())
-                    .where("sAMAccountName").is(account);
-
-            List<String> dns = ldapTemplate.search(
-                    query,
-                    (AttributesMapper<String>) attrs -> {
-                        Attribute dnAttr = attrs.get("distinguishedName");
-                        return dnAttr != null ? dnAttr.get().toString() : null;
-                    }
-            );
-
-            if (dns != null && !dns.isEmpty()) {
-                String userDn = dns.get(0);
-                log.info("找到用户 {} 的 DN: {}", account, userDn);
-                return userDn;
-            }
-
-            log.warn("未找到用户 {} 的 DN", account);
-            return null;
-        } catch (Exception e) {
-            log.error("查询用户 {} 的 DN 失败: {}", account, e.getMessage(), e);
-            return null;
-        }
-    }
 
     /**
      * 验证用户身份并返回用户上下文
@@ -180,37 +145,50 @@ public class LdapService {
     }
 
     private List<LdapTreeNode> getLdapTreeNodes() {
-        String cacheKey = configService.getLdapBase();
-
-        // 1. 优先从本地内存缓存中查询
-        CacheEntry cacheEntry = ldapCache.get(cacheKey);
-        if (cacheEntry != null && !cacheEntry.isExpired()) {
-            log.info("从本地内存缓存中获取 LDAP 树形结构, key: {}, 根节点数量: {}", cacheKey, cacheEntry.getNodes().size());
-            return cacheEntry.getNodes();
+        // 根节点集合：baseDn + 配置的子树（subTrees），均按来源=LDAP 分组缓存
+        List<String> roots = new ArrayList<>();
+        roots.add(configService.getLdapBase().toLowerCase());
+        List<String> subTrees = configService.getLdapTrees();
+        if (subTrees != null) {
+            for (String s : subTrees) roots.add(s.toLowerCase());
         }
 
-        // 2. 缓存未命中或已过期，访问 LDAP 查询
-        if (cacheEntry != null && cacheEntry.isExpired()) {
-            log.info("本地缓存已过期，开始重新查询 LDAP 树形结构, base: {}", cacheKey);
-        } else {
-            log.info("本地缓存未命中，开始查询 LDAP 树形结构, base: {}", cacheKey);
+        // 1. 优先从本地内存缓存按根分组查询（全部命中且未过期才走缓存）
+        List<LdapTreeNode> cached = new ArrayList<>();
+        boolean allHit = true;
+        for (String root : roots) {
+            CacheEntry entry = deptNodeCache.get("LDAP:" + root);
+            if (entry == null || entry.isExpired()) {
+                allHit = false;
+                break;
+            }
+            cached.addAll(entry.getNodes());
         }
+        if (allHit) {
+            log.info("从本地内存缓存获取 LDAP 树（按来源+根分组），根数量: {}", roots.size());
+            return cached;
+        }
+
+        // 2. 缓存未全部命中/已过期，访问 LDAP 查询
+        log.info("本地缓存未全部命中或已过期，开始查询 LDAP 树形结构, base: {}", configService.getLdapBase());
 
         // 从LDAP查询平铺的节点列表
         List<LdapTreeNode> allEntries = getLdapEntriesFromLdap();
         log.info("从LDAP查询到节点数量: {}", allEntries.size());
 
-        // 构建树形结构
+        // 构建树形结构（buildTree 已按子树范围裁剪，返回各根节点）
         List<LdapTreeNode> tree = buildTree(allEntries);
         log.info("构建后的树根节点数量: {}", tree.size());
 
-        // 3. 将构建好的树形结构存入本地内存缓存（从数据库读取过期时间）
-        if (tree != null && !tree.isEmpty()) {
-            long ttlMillis = configService.getCacheExpireMinutes() * 60 * 1000L; // 转换为毫秒
-            CacheEntry newEntry = new CacheEntry(tree, ttlMillis);
-            ldapCache.put(cacheKey, newEntry);
-            log.info("LDAP 树形结构已缓存到本地内存, key: {}, 根节点数量: {}, 过期时间: {}分钟",
-                    cacheKey, tree.size(), configService.getCacheExpireMinutes());
+        // 3. 将构建好的树按根拆分存入本地内存缓存（从数据库读取过期时间）
+        long ttlMillis = configService.getCacheExpireMinutes() * 60 * 1000L; // 转换为毫秒
+        for (LdapTreeNode rootNode : tree) {
+            String key = "LDAP:" + rootNode.getDn().toLowerCase();
+            List<LdapTreeNode> single = new ArrayList<>();
+            single.add(rootNode);
+            deptNodeCache.put(key, new CacheEntry(single, ttlMillis));
+            log.info("LDAP 树形结构已缓存到本地内存, key: {}, 过期时间: {}分钟",
+                    key, configService.getCacheExpireMinutes());
         }
 
         return tree;
@@ -422,80 +400,11 @@ public class LdapService {
     }
 
     /**
-     * 根据部门 DN 返回其子树（含自身），用于按用户 scope 过滤权限树
-     */
-    public List<LdapNodeDTO> getDeptSubtreeWithAuth(String docId, String rootDn) {
-        List<DocShareRel> shareRels = null;
-        if (docId != null) {
-            shareRels = docShareRelRepository.findByUid(docId);
-        }
-        List<LdapTreeNode> tree = getLdapTreeNodes();
-        LdapTreeNode root = findNodeByDn(tree, rootDn.toLowerCase());
-        List<LdapNodeDTO> result = new ArrayList<>();
-        if (root != null) {
-            LdapNodeDTO dto = toDTO(root);
-            if (!CollectionUtils.isEmpty(shareRels)) {
-                markAuthStatus(dto, shareRels);
-            }
-            result.add(dto);
-        }
-        return result;
-    }
-
-    /**
      * 强制刷新 LDAP 树缓存（后台管理勾选部门时使用）
      */
     public void forceRefreshLdapCache() {
-        ldapCache.clear();
-        log.info("[LdapService] LDAP 树缓存已强制清空");
-    }
-
-    /**
-     * 按关键字搜索 LDAP 用户（用于后台给内部账号绑定部门可见范围时选人）
-     */
-    public List<LdapNodeDTO> searchLdapUsers(String keyword) {
-        List<LdapNodeDTO> result = new ArrayList<>();
-        if (keyword == null || keyword.trim().isEmpty()) {
-            return result;
-        }
-        try {
-            String kw = keyword.trim().replace("*", "");
-            String filter = "(&(objectClass=user)(|(sAMAccountName=*" + kw + "*)(cn=*" + kw + "*)))";
-            List<LdapNodeDTO> found = ldapTemplate.search(
-                    org.springframework.ldap.query.LdapQueryBuilder.query().filter(filter),
-                    (org.springframework.ldap.core.ContextMapper<LdapNodeDTO>) ctx -> {
-                        org.springframework.ldap.core.DirContextOperations dco =
-                                (org.springframework.ldap.core.DirContextOperations) ctx;
-                        LdapNodeDTO n = new LdapNodeDTO();
-                        n.setDn(dco.getDn().toString());
-                        n.setType(1);
-                        javax.naming.directory.Attributes attrs = dco.getAttributes();
-                        n.setName(attrs.get("cn") != null ? attrs.get("cn").get().toString() : null);
-                        n.setAccount(attrs.get("sAMAccountName") != null
-                                ? attrs.get("sAMAccountName").get().toString() : null);
-                        return n;
-                    });
-            result.addAll(found);
-        } catch (Exception e) {
-            log.error("[searchLdapUsers] 查询失败: {}", e.getMessage(), e);
-        }
-        return result;
-    }
-
-    /**
-     * 递归查找指定 DN 的节点
-     */
-    private LdapTreeNode findNodeByDn(List<LdapTreeNode> nodes, String targetDn) {
-        for (LdapTreeNode n : nodes) {
-            if (n.getDn() != null && n.getDn().toLowerCase().equals(targetDn)) {
-                return n;
-            }
-            LdapTreeNode found = findNodeByDn(n.getChildren(), targetDn);
-            if (found != null) {
-                return found;
-            }
-        }
-        return null;
+        deptNodeCache.clear();
+        log.info("[LdapService] 部门节点缓存(deptNodeCache)已强制清空");
     }
 
     /**

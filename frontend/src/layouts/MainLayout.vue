@@ -11,6 +11,7 @@
         <el-menu-item index="/users"><el-icon><User /></el-icon><span>用户管理</span></el-menu-item>
         <el-menu-item v-if="isAdmin" index="/roles"><el-icon><Key /></el-icon><span>角色管理</span></el-menu-item>
         <el-menu-item v-if="isAdmin" index="/docs"><el-icon><Document /></el-icon><span>文档管理</span></el-menu-item>
+        <el-menu-item v-if="isAdmin" index="/ldap-sync"><el-icon><Switch /></el-icon><span>LDAP 同步</span></el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>
@@ -41,7 +42,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { Key } from '@element-plus/icons-vue'
+import { Key, Switch } from '@element-plus/icons-vue'
 import { getUser, clearAuth } from '@/store/auth'
 import { logout } from '@/api/auth'
 

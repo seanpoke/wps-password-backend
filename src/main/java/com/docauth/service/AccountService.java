@@ -61,33 +61,32 @@ public class AccountService {
     public LoginResponse login(String account, String password) {
         log.info("[login] 开始处理登录请求，账号: {}", account);
 
-        // 1. 尝试 LDAP 认证（内部用户）
-        UserContext userContext = ldapService.authenticate(account, password);
-        String source = "LDAP";
+        // 1. 先查用户表，依据来源(source)路由校验方式（表中无记录直接报错）
+        SysUser user = sysUserRepository.findByAccount(account).orElse(null);
+        if (user == null) {
+            throw new RuntimeException("认证失败：账号或密码错误");
+        }
+        String source = user.getSource();
+        UserContext userContext;
         boolean needChangePwd = false;
 
-        // 2. LDAP 未命中，回退本地外部用户认证（落库即为有效账号）
-        if (userContext == null) {
-            SysUser local = sysUserRepository.findByAccount(account).orElse(null);
-            if (local == null) {
+        if ("LDAP".equals(source)) {
+            // LDAP 来源：只允许走 LDAP 校验
+            userContext = ldapService.authenticate(account, password);
+            if (userContext == null) {
                 throw new RuntimeException("认证失败：账号或密码错误");
             }
-            // 仅本地账号走 BCrypt 校验；LDAP 账号即使落到本地表也不允许本地密码
-            if (!"LOCAL".equals(local.getSource())) {
-                throw new RuntimeException("认证失败：该账号非本地账号");
-            }
-            if (!passwordEncoder.matches(password, local.getPasswordHash())) {
+            log.info("[login] LDAP 用户认证成功，账号: {}", account);
+        } else {
+            // LOCAL 来源：只允许走本地 BCrypt 校验
+            if (!passwordEncoder.matches(password, user.getPasswordHash())) {
                 throw new RuntimeException("认证失败：账号或密码错误");
             }
             userContext = new UserContext();
-            userContext.setAccount(local.getAccount());
-            userContext.setName(local.getName());
-            source = "LOCAL";
-            needChangePwd = local.getMustChangePwd() != null && local.getMustChangePwd() == 1;
+            userContext.setAccount(user.getAccount());
+            userContext.setName(user.getName());
+            needChangePwd = user.getMustChangePwd() != null && user.getMustChangePwd() == 1;
             log.info("[login] 本地用户认证成功，账号: {}", account);
-        } else {
-            // LDAP 同步用户落库即为有效账号，无需状态禁用校验
-            log.info("[login] LDAP 用户认证成功，账号: {}", account);
         }
 
         // 生成 token

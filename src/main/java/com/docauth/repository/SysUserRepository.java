@@ -18,4 +18,9 @@ public interface SysUserRepository extends JpaRepository<SysUser, Long>, JpaSpec
     List<SysUser> findByDeptId(Long deptId);
 
     List<SysUser> findBySource(String source);
+
+    /** 批量删除用户（IN，一条 SQL 覆盖多个 id） */
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true, flushAutomatically = true)
+    @org.springframework.data.jpa.repository.Query("delete from SysUser u where u.id in :ids")
+    void deleteByIds(@org.springframework.data.repository.query.Param("ids") List<Long> ids);
 }

@@ -70,7 +70,12 @@ if ($LASTEXITCODE -ne 0) { throw 'backend build failed' }
 # 3. build frontend (output to ../webroot)
 Set-Location "$root\frontend"
 Write-Host '[deploy] building frontend SPA ...'
-npm run build
+# Vite 会把 chunk 体积告警输出到 stderr，在 $ErrorActionPreference='Stop' 下会被误判为致命错误而中断部署；
+# 这里临时放宽错误偏好，仅以进程退出码判断是否真正失败。
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = 'SilentlyContinue'
+npm run build 2>&1 | Out-String | Write-Host
+$ErrorActionPreference = $prevEAP
 if ($LASTEXITCODE -ne 0) { throw 'frontend build failed' }
 
 # 4. start backend

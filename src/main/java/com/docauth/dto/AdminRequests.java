@@ -27,7 +27,6 @@ public class AdminRequests {
         private String name;
         private String password;
         private Long deptId;
-        private String email;
         private java.util.List<Long> visibleDeptIds; // 可见部门权限（按 USER 绑定）
         public String getAccount() { return account; }
         public void setAccount(String v) { account = v; }
@@ -37,8 +36,6 @@ public class AdminRequests {
         public void setPassword(String v) { password = v; }
         public Long getDeptId() { return deptId; }
         public void setDeptId(Long v) { deptId = v; }
-        public String getEmail() { return email; }
-        public void setEmail(String v) { email = v; }
         public java.util.List<Long> getVisibleDeptIds() { return visibleDeptIds; }
         public void setVisibleDeptIds(java.util.List<Long> v) { visibleDeptIds = v; }
     }
@@ -46,15 +43,12 @@ public class AdminRequests {
     public static class UpdateUser {
         private String name;
         private Long deptId;
-        private String email;
         private java.util.List<Long> roleIds;
         private java.util.List<Long> visibleDeptIds; // 可见部门权限（按 USER 绑定）
         public String getName() { return name; }
         public void setName(String v) { name = v; }
         public Long getDeptId() { return deptId; }
         public void setDeptId(Long v) { deptId = v; }
-        public String getEmail() { return email; }
-        public void setEmail(String v) { email = v; }
         public java.util.List<Long> getRoleIds() { return roleIds; }
         public void setRoleIds(java.util.List<Long> v) { roleIds = v; }
         public java.util.List<Long> getVisibleDeptIds() { return visibleDeptIds; }

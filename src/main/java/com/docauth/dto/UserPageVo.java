@@ -7,7 +7,6 @@ public class UserPageVo {
     private Long id;
     private String account;
     private String name;
-    private String email;
     private Long deptId;
     private String deptName;
     private String source;
@@ -40,8 +39,6 @@ public class UserPageVo {
     public void setAccount(String v) { account = v; }
     public String getName() { return name; }
     public void setName(String v) { name = v; }
-    public String getEmail() { return email; }
-    public void setEmail(String v) { email = v; }
     public Long getDeptId() { return deptId; }
     public void setDeptId(Long v) { deptId = v; }
     public String getDeptName() { return deptName; }

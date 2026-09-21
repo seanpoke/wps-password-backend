@@ -11,6 +11,9 @@
 --   3) doc_share_rel：由 DN 模型改为本地 id 模型（target_id/invalid，移除 dn）
 --   4) doc_info：补充按创建时间倒序分页索引
 --   5) admin 角色可见部门配置为「全部」
+-- 说明：MySQL 不支持 ADD COLUMN IF NOT EXISTS，且当前服务器版本亦不支持
+--       DROP COLUMN IF EXISTS，故统一用「information_schema 判断 + 动态 SQL」
+--       做存在性检查，保证可重复执行不报错。
 -- ============================================================
 USE doc_auth_system;
 
@@ -19,7 +22,6 @@ CREATE TABLE IF NOT EXISTS sys_user (
     id             BIGINT       NOT NULL AUTO_INCREMENT,
     account        VARCHAR(64)  NOT NULL COMMENT '账号（唯一）',
     name           VARCHAR(64)  DEFAULT NULL COMMENT '名称',
-    email          VARCHAR(128) DEFAULT NULL COMMENT '邮箱',
     password_hash  VARCHAR(255) DEFAULT NULL COMMENT 'BCrypt 密码哈希（本地账号）',
     dept_id        BIGINT       DEFAULT NULL COMMENT '所属部门 id',
     must_change_pwd INT         DEFAULT NULL COMMENT '是否强制改密',
@@ -62,6 +64,11 @@ CREATE TABLE IF NOT EXISTS visible_dept_rel (
     KEY idx_vdr_rel (rel_type, rel_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户/角色-可见部门关联表';
 
+-- 1.0 清理历史残留列（旧库可能仍含已废弃字段；动态判断，可重复执行）
+SET @exist_email := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='sys_user' AND COLUMN_NAME='email');
+SET @sql_email := IF(@exist_email>0, 'ALTER TABLE sys_user DROP COLUMN email', 'SELECT 1');
+PREPARE stmt_email FROM @sql_email; EXECUTE stmt_email; DEALLOCATE PREPARE stmt_email;
+
 /* ===================== 2. sys_role 演进（type/account → 角色定义表） ===================== */
 -- 2.1 新增角色定义列（若尚未存在）
 SET @exist_role_col := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='sys_role' AND COLUMN_NAME='code');
@@ -75,10 +82,10 @@ INSERT INTO sys_role (code, name, priority, remark, create_time)
 SELECT 'admin', '超级管理员', 0, '全量可见', NOW()
 WHERE NOT EXISTS (SELECT 1 FROM sys_role WHERE code='admin');
 INSERT INTO sys_role (code, name, priority, remark, create_time)
-SELECT 'user', '普通用户', 11, '默认角色', NOW()
+SELECT 'user', '普通用户', 10, '默认角色', NOW()
 WHERE NOT EXISTS (SELECT 1 FROM sys_role WHERE code='user');
 INSERT INTO sys_role (code, name, priority, remark, create_time)
-SELECT 'greenet', '绿网员工', 10, '绿网员工默认角色（LDAP 同步自动授予）', NOW()
+SELECT 'greenet', '绿网员工', 100, '绿网员工默认角色（LDAP 同步自动授予）', NOW()
 WHERE NOT EXISTS (SELECT 1 FROM sys_role WHERE code='greenet');
 
 -- 2.3 收尾列约束
@@ -108,6 +115,7 @@ SET @exist_invalid := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TAB
 SET @sql_invalid := IF(@exist_invalid=0, 'ALTER TABLE doc_share_rel ADD COLUMN invalid TINYINT(1) NOT NULL DEFAULT 0 COMMENT "0 有效 / 1 失效"', 'SELECT 1');
 PREPARE stmt_invalid FROM @sql_invalid; EXECUTE stmt_invalid; DEALLOCATE PREPARE stmt_invalid;
 
+-- 3.3 移除旧 DN 列（若存在）
 SET @exist_dn := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='doc_share_rel' AND COLUMN_NAME='dn');
 SET @sql_dn := IF(@exist_dn>0, 'ALTER TABLE doc_share_rel DROP COLUMN dn', 'SELECT 1');
 PREPARE stmt_dn FROM @sql_dn; EXECUTE stmt_dn; DEALLOCATE PREPARE stmt_dn;
@@ -125,3 +133,32 @@ INSERT INTO visible_dept_rel (rel_type, rel_id, dept_id)
 SELECT 'ROLE', @admin_id, 0
 WHERE @admin_id IS NOT NULL
   AND NOT EXISTS (SELECT 1 FROM visible_dept_rel WHERE rel_type='ROLE' AND rel_id=@admin_id AND dept_id=0);
+
+/* ===================== 6. 历史数据校正（存量 LDAP 用户，由脚本一次性完成） =====================
+   代码不再处理历史数据，以下校正针对已存在的 LDAP 用户，可重复执行。
+   6.1 仅保留 greenet 角色：删除 LDAP 用户多余的 user 角色（若有）
+   6.2 确保 LDAP 用户拥有 greenet 角色（历史缺失则补）
+   6.3 LDAP 用户 password_hash 置空（LDAP 不本地存密码） */
+-- 6.0 允许 password_hash 为空（LDAP 用户不本地存密码；本地用户仍必须有值）
+ALTER TABLE sys_user MODIFY COLUMN password_hash VARCHAR(255) NULL DEFAULT NULL COMMENT 'BCrypt 密码哈希（本地账号；LDAP 用户留空）';
+
+SET @user_role_id    := (SELECT id FROM sys_role WHERE code='user');
+SET @greenet_role_id := (SELECT id FROM sys_role WHERE code='greenet');
+
+-- 6.1 删除 LDAP 用户多余的 user 角色
+DELETE sur FROM sys_user_role sur
+JOIN sys_user u ON u.id = sur.user_id
+WHERE u.source = 'LDAP'
+  AND @user_role_id IS NOT NULL
+  AND sur.role_id = @user_role_id;
+
+-- 6.2 确保 LDAP 用户拥有 greenet 角色（缺失则补）
+INSERT INTO sys_user_role (user_id, role_id)
+SELECT u.id, @greenet_role_id
+FROM sys_user u
+WHERE u.source = 'LDAP'
+  AND @greenet_role_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM sys_user_role sur WHERE sur.user_id = u.id AND sur.role_id = @greenet_role_id);
+
+-- 6.3 LDAP 用户 password_hash 置空（若非 NULL）
+UPDATE sys_user SET password_hash = NULL WHERE source = 'LDAP' AND password_hash IS NOT NULL;

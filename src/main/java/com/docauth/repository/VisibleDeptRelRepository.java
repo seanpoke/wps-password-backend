@@ -31,4 +31,14 @@ public interface VisibleDeptRelRepository extends JpaRepository<VisibleDeptRel, 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("delete from VisibleDeptRel v where v.deptId = :deptId")
     void deleteByDeptId(@Param("deptId") Long deptId);
+
+    /** 批量删除某部门相关的绑定（IN） */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from VisibleDeptRel v where v.deptId IN :ids")
+    void deleteByDeptIds(@Param("ids") List<Long> ids);
+
+    /** 批量删除某主体(USER/ROLE)相关的绑定（IN） */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from VisibleDeptRel v where v.relType = :relType and v.relId IN :ids")
+    void deleteByRelTypeAndRelIds(@Param("relType") String relType, @Param("ids") List<Long> ids);
 }
