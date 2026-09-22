@@ -47,16 +47,6 @@ public class UserContextHolder {
     }
 
     /**
-     * 获取当前用户身份源 (LDAP / LOCAL)
-     *
-     * @return 身份源
-     */
-    public static String getCurrentSource() {
-        UserContext userContext = getUserContext();
-        return userContext != null ? userContext.getSource() : null;
-    }
-
-    /**
      * 清除用户上下文（防止内存泄漏）
      */
     public static void clear() {

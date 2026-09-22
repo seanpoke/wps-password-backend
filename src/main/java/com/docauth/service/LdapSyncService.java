@@ -7,7 +7,6 @@ import com.docauth.entity.SysDept;
 import com.docauth.entity.SysRole;
 import com.docauth.entity.SysUser;
 import com.docauth.entity.SysUserRole;
-import com.docauth.entity.VisibleDeptRel;
 import com.docauth.repository.DocShareRelRepository;
 import com.docauth.repository.SysDeptRepository;
 import com.docauth.repository.SysUserRepository;
@@ -19,8 +18,6 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.naming.NamingEnumeration;
-import javax.naming.directory.Attributes;
 import javax.naming.ldap.LdapName;
 import javax.naming.ldap.Rdn;
 import java.util.ArrayList;

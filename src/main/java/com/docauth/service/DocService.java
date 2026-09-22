@@ -466,6 +466,7 @@ public class DocService {
         n.setType(s.getType());
         n.setName(s.getName());
         n.setAccount(s.getAccount());
+        n.setDn(s.getDn());
         String key = s.getType() + ":" + s.getId();
         n.setHasAuth(authKeys.contains(key));
         byKey.put(key, n);

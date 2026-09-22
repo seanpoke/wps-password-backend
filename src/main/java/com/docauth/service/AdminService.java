@@ -4,7 +4,6 @@ import com.docauth.dto.DocAuthVo;
 import com.docauth.dto.DocDetailVo;
 import com.docauth.dto.DeptRefVo;
 import com.docauth.dto.DocPageVo;
-import com.docauth.dto.DeptVisibleRef;
 import com.docauth.dto.LdapNodeDTO;
 import com.docauth.dto.PageResult;
 import com.docauth.dto.RoleListVo;
@@ -113,17 +112,35 @@ public class AdminService {
     }
 
     @Transactional
-    public SysDept updateDept(Long id, String name) {
+    public SysDept updateDept(Long id, String name, Long parentId) {
         SysDept d = sysDeptRepository.findById(id).orElseThrow(() -> new RuntimeException("部门不存在"));
-        String oldPath = d.getPath();
-        String newPath = "ou=" + name;
-        if (d.getParentId() != null) {
-            SysDept p = sysDeptRepository.findById(d.getParentId()).orElse(null);
-            if (p != null) {
-                newPath = newPath + "," + p.getPath();
+
+        // LDAP 部门层级由同步维护，禁止在管理平台改父节点（仅名称可改）
+        boolean parentChanged = (parentId == null) ? d.getParentId() != null : !parentId.equals(d.getParentId());
+        if ("LDAP".equals(d.getSource()) && parentChanged) {
+            throw new RuntimeException("LDAP 部门层级由同步维护，不允许修改父节点");
+        }
+
+        // 校验新父节点：存在、非自身、不能挂到自己的子孙下（防环）
+        SysDept parent = null;
+        if (parentId != null) {
+            if (parentId.equals(id)) {
+                throw new RuntimeException("父节点不能是部门自身");
+            }
+            parent = sysDeptRepository.findById(parentId).orElseThrow(() -> new RuntimeException("父部门不存在"));
+            if (parent.getPath() != null && d.getPath() != null
+                    && (parent.getPath().equals(d.getPath()) || parent.getPath().endsWith("," + d.getPath()))) {
+                throw new RuntimeException("不能将部门移动到其子部门下");
             }
         }
+
+        String oldPath = d.getPath();
+        String newPath = "ou=" + name;
+        if (parent != null) {
+            newPath = newPath + "," + parent.getPath();
+        }
         d.setName(name);
+        d.setParentId(parentId);
         d.setPath(newPath);
         sysDeptRepository.save(d);
         if (oldPath != null && !oldPath.equals(newPath)) {
@@ -137,6 +154,10 @@ public class AdminService {
                 }
             }
         }
+
+        // 部门层级/名称变化影响权限树 DN，主动刷新组织树缓存（客户端 /doc/auth/tree 即时生效）
+        orgTreeCacheService.forceRefresh();
+
         return d;
     }
 
@@ -527,36 +548,6 @@ public class AdminService {
         List<Long> deptIds = visibleDeptRelRepository.findByRelTypeAndRelId(relType, relId)
                 .stream().map(VisibleDeptRel::getDeptId).collect(Collectors.toList());
         return sysDeptRepository.findAllById(deptIds);
-    }
-
-    @Transactional
-    public VisibleDeptRel addVisibleDept(String relType, Long relId, Long deptId) {
-        if (!sysDeptRepository.existsById(deptId)) {
-            throw new RuntimeException("dept not exist");
-        }
-        if (visibleDeptRelRepository.findByRelTypeAndRelIdAndDeptId(relType, relId, deptId).isPresent()) {
-            throw new RuntimeException("dept already in scope");
-        }
-        VisibleDeptRel r = new VisibleDeptRel();
-        r.setRelType(relType);
-        r.setRelId(relId);
-        r.setDeptId(deptId);
-        return visibleDeptRelRepository.save(r);
-    }
-
-    @Transactional
-    public void deleteVisibleDept(String relType, Long relId, Long deptId) {
-        visibleDeptRelRepository.findByRelTypeAndRelIdAndDeptId(relType, relId, deptId)
-                .ifPresent(visibleDeptRelRepository::delete);
-    }
-
-    @Transactional(readOnly = true)
-    public List<DeptVisibleRef> listDeptVisibleRefs(Long deptId) {
-        List<DeptVisibleRef> refs = new ArrayList<>();
-        for (VisibleDeptRel r : visibleDeptRelRepository.findByDeptId(deptId)) {
-            refs.add(new DeptVisibleRef(r.getId(), r.getRelType(), r.getRelId(), resolveRelName(r.getRelType(), r.getRelId())));
-        }
-        return refs;
     }
 
     @Transactional(readOnly = true)

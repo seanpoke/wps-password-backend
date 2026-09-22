@@ -18,8 +18,11 @@ public class AdminRequests {
 
     public static class UpdateDept {
         private String name;
+        private Long parentId; // 新父部门 id；null 表示改为顶级（仅 LOCAL 部门允许改父节点）
         public String getName() { return name; }
         public void setName(String v) { name = v; }
+        public Long getParentId() { return parentId; }
+        public void setParentId(Long v) { parentId = v; }
     }
 
     public static class CreateUser {
@@ -103,16 +106,4 @@ public class AdminRequests {
         public void setRoleId(Long v) { roleId = v; }
     }
 
-    /** 去权限组：用户/角色直接绑定可见部门 */
-    public static class BindVisibleDept {
-        private String relType; // USER / ROLE
-        private Long relId;     // sys_user.id 或 sys_role.id
-        private Long deptId;    // sys_dept.id
-        public String getRelType() { return relType; }
-        public void setRelType(String v) { relType = v; }
-        public Long getRelId() { return relId; }
-        public void setRelId(Long v) { relId = v; }
-        public Long getDeptId() { return deptId; }
-        public void setDeptId(Long v) { deptId = v; }
-    }
 }

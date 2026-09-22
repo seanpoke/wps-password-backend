@@ -6,7 +6,6 @@ import com.docauth.entity.SysUser;
 import com.docauth.repository.SysDeptRepository;
 import com.docauth.repository.SysUserRepository;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -48,9 +47,6 @@ public class OrgTreeCacheService {
     /** 完整权限树（部门+用户），不含 hasAuth，供 /auth/tree 使用。 */
     private final AtomicReference<List<LdapNodeDTO>> permissionTreeRef =
             new AtomicReference<>(Collections.emptyList());
-
-    @Value("${org.tree.cache.ttl-minutes:15}")
-    private long ttlMinutes;
 
     public OrgTreeCacheService(SysDeptRepository sysDeptRepository, SysUserRepository sysUserRepository) {
         this.sysDeptRepository = sysDeptRepository;
@@ -104,6 +100,8 @@ public class OrgTreeCacheService {
 
     /** 构建完整权限树（部门+用户），结构与旧 DocService.buildTree 一致，但不打 hasAuth、不做 scope 过滤。 */
     private List<LdapNodeDTO> buildPermissionTree(List<SysDept> depts, List<SysUser> users) {
+        Map<Long, SysDept> deptById = depts.stream()
+                .collect(Collectors.toMap(SysDept::getId, d -> d, (a, b) -> a));
         Map<Long, LdapNodeDTO> deptNodes = new HashMap<>();
         for (SysDept d : depts) {
             LdapNodeDTO n = new LdapNodeDTO();
@@ -111,6 +109,7 @@ public class OrgTreeCacheService {
             n.setType(0);
             n.setName(d.getName());
             n.setAccount(null);
+            n.setDn(d.getPath());   // 部门 DN 取 sys_dept.path
             n.setHasAuth(false);
             deptNodes.put(d.getId(), n);
         }
@@ -131,11 +130,18 @@ public class OrgTreeCacheService {
             if (p == null) {
                 continue;
             }
+            // 用户 DN 由 CN=账号 + 所属部门 DN 拼接（sys_user 不持久化 DN）
+            String userDn = null;
+            SysDept ud = deptById.get(u.getDeptId());
+            if (ud != null && ud.getPath() != null && u.getAccount() != null) {
+                userDn = "CN=" + u.getAccount() + "," + ud.getPath();
+            }
             LdapNodeDTO un = new LdapNodeDTO();
             un.setId(u.getId());
             un.setType(1);
             un.setName(u.getName());
             un.setAccount(u.getAccount());
+            un.setDn(userDn);
             un.setHasAuth(false);
             addEmploy(p, un);
         }

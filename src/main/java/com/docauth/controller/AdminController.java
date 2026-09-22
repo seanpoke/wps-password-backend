@@ -3,14 +3,8 @@ package com.docauth.controller;
 import com.docauth.context.UserContextHolder;
 import com.docauth.dto.ApiResponse;
 import com.docauth.dto.AdminRequests;
-import com.docauth.dto.LdapNodeDTO;
 import com.docauth.dto.SyncApplyRequest;
 
-
-import com.docauth.entity.SysDept;
-import com.docauth.entity.SysRole;
-import com.docauth.entity.SysUser;
-import com.docauth.entity.SysUserRole;
 import com.docauth.enums.UserSource;
 
 import com.docauth.service.AdminService;
@@ -62,10 +56,10 @@ public class AdminController {
     }
 
     @PutMapping("/depts/{id}")
-    @Operation(summary = "修改部门名称")
+    @Operation(summary = "修改部门（LOCAL：名称/父节点；LDAP：仅名称）")
     public ApiResponse<?> updateDept(@PathVariable Long id, @RequestBody AdminRequests.UpdateDept req) {
         assertAdmin();
-        return ApiResponse.success(adminService.updateDept(id, req.getName()));
+        return ApiResponse.success(adminService.updateDept(id, req.getName(), req.getParentId()));
     }
 
     @DeleteMapping("/depts/{id}")
@@ -164,25 +158,6 @@ public class AdminController {
         return ApiResponse.success(adminService.listVisibleDepts(relType, relId));
     }
 
-    @PostMapping("/visible-depts")
-    @Operation(summary = "bind a visible dept to a user/role")
-    public ApiResponse<?> addVisibleDept(@RequestBody AdminRequests.BindVisibleDept req) {
-        assertAdmin();
-        try {
-            return ApiResponse.success(adminService.addVisibleDept(req.getRelType(), req.getRelId(), req.getDeptId()));
-        } catch (RuntimeException e) {
-            return ApiResponse.error(400, e.getMessage());
-        }
-    }
-
-    @DeleteMapping("/visible-depts")
-    @Operation(summary = "unbind a visible dept from a user/role")
-    public ApiResponse<?> deleteVisibleDept(@RequestParam String relType, @RequestParam Long relId, @RequestParam Long deptId) {
-        assertAdmin();
-        adminService.deleteVisibleDept(relType, relId, deptId);
-        return ApiResponse.success("ok");
-    }
-
     @GetMapping("/dept-refs")
     @Operation(summary = "dept tree badges: refs + doc auth count")
     public ApiResponse<?> deptRefs() {
@@ -220,13 +195,6 @@ public class AdminController {
         } catch (RuntimeException e) {
             return ApiResponse.error(400, e.getMessage());
         }
-    }
-
-    @GetMapping("/depts/{id}/refs")
-    @Operation(summary = "reverse lookup: who set this dept visible")
-    public ApiResponse<?> listDeptVisibleRefs(@PathVariable Long id) {
-        assertAdmin();
-        return ApiResponse.success(adminService.listDeptVisibleRefs(id));
     }
 
     /* ===================== 角色 ===================== */
