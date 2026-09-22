@@ -67,8 +67,15 @@ public class LdapSyncService {
     @Autowired
     private ConfigService configService;
 
-    /** 同步互斥锁：定时 fullSync 与手动 apply 共用，避免重叠写 */
+    /** 同步互斥锁：定时 fullSync 与手动 apply / 手动全量同步 共用，避免重叠写 */
     private final AtomicBoolean syncing = new AtomicBoolean(false);
+    /** 手动同步后台线程池（单线程，串行执行手动全量同步，避免阻塞 HTTP 请求） */
+    private final java.util.concurrent.ExecutorService syncExecutor =
+            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "ldap-manual-sync");
+                t.setDaemon(true);
+                return t;
+            });
     /** 上次同步状态（OK / SKIPPED_NO_SUBTREE / FAILED_LDAP_ERROR 等） */
     private volatile String lastStatus;
     /** 上次同步完成时间 */
@@ -259,47 +266,83 @@ public class LdapSyncService {
      * </ol>
      * 与 apply 共用 syncing 锁，避免重叠写。
      */
+    /**
+     * 定时全量同步（调度器调用，阻塞性）：
+     * 与 manualSync 共用 syncing 锁；若锁被占用（手动/其他定时正在跑）则跳过本轮。
+     */
     public Map<String, Object> fullSync() {
         if (!syncing.compareAndSet(false, true)) {
             return statusMap("SKIPPED", "已有同步任务进行中，跳过本次");
         }
-        LocalDateTime startTime = LocalDateTime.now();
         try {
-            List<String> trees = configService.getLdapTrees();
-            if (trees == null || trees.isEmpty()) {
-                lastStatus = "SKIPPED_NO_SUBTREE";
-                lastSyncTime = startTime;
-                return statusMap("SKIPPED", "未配置 subTree，不执行同步");
-            }
-            Map<String, LdapService.LdapTreeNode> deptByDn = new HashMap<>();
-            List<LdapService.LdapTreeNode> userNodes = new ArrayList<>();
-            try {
-                Map<String, List<LdapService.LdapTreeNode>> byRoot = ldapService.getAllLdapEntriesByRoot();
-                for (List<LdapService.LdapTreeNode> entries : byRoot.values()) {
-                    for (LdapService.LdapTreeNode n : entries) {
-                        if (attr(n, "sAMAccountName") != null) {
-                            userNodes.add(n);
-                        } else {
-                            deptByDn.put(n.getDn().toLowerCase(), n);
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                log.error("[ldapSync] LDAP 拉取异常，跳过整轮同步（不改动数据库）：{}", e.getMessage(), e);
-                lastStatus = "FAILED_LDAP_ERROR";
-                lastSyncTime = startTime;
-                return statusMap("FAILED", "LDAP 接口异常，已跳过本轮同步");
-            }
-            String result = self.persistFullSync(deptByDn, userNodes);
-            ldapService.forceRefreshLdapCache();
-            orgTreeCacheService.forceRefresh();
-            lastStatus = "OK";
-            lastSyncTime = LocalDateTime.now();
-            log.info("[ldapSync] 全量同步成功：{}", result);
-            return statusMap("OK", result);
+            return doSync();
         } finally {
             syncing.set(false);
         }
+    }
+
+    /**
+     * 手动立即全量同步（HTTP 触发，异步化）：
+     * - 若 syncing 锁被占用 → 返回 BUSY，提示「当前正在同步，请稍后重试」；
+     * - 否则立即占用锁并在后台线程执行，HTTP 秒回 STARTED，避免前端请求超时。
+     */
+    public Map<String, Object> manualSync() {
+        if (!syncing.compareAndSet(false, true)) {
+            return statusMap("BUSY", "当前正在同步，请稍后重试");
+        }
+        try {
+            syncExecutor.submit(() -> {
+                try {
+                    doSync();
+                } catch (Exception e) {
+                    log.error("[ldapSync] 手动全量同步执行异常", e);
+                } finally {
+                    syncing.set(false);
+                }
+            });
+            return statusMap("STARTED", "已触发全量同步，后台执行中，请稍候刷新查看结果");
+        } catch (Exception e) {
+            syncing.set(false);
+            log.error("[ldapSync] 手动全量同步提交失败", e);
+            return statusMap("FAILED", "触发全量同步失败：" + e.getMessage());
+        }
+    }
+
+    /** 全量同步核心：拉取 LDAP → 落库 → 刷新缓存，由使用方负责 syncing 锁的获取/释放 */
+    private Map<String, Object> doSync() {
+        LocalDateTime startTime = LocalDateTime.now();
+        List<String> trees = configService.getLdapTrees();
+        if (trees == null || trees.isEmpty()) {
+            lastStatus = "SKIPPED_NO_SUBTREE";
+            lastSyncTime = startTime;
+            return statusMap("SKIPPED", "未配置 subTree，不执行同步");
+        }
+        Map<String, LdapService.LdapTreeNode> deptByDn = new HashMap<>();
+        List<LdapService.LdapTreeNode> userNodes = new ArrayList<>();
+        try {
+            Map<String, List<LdapService.LdapTreeNode>> byRoot = ldapService.getAllLdapEntriesByRoot();
+            for (List<LdapService.LdapTreeNode> entries : byRoot.values()) {
+                for (LdapService.LdapTreeNode n : entries) {
+                    if (attr(n, "sAMAccountName") != null) {
+                        userNodes.add(n);
+                    } else {
+                        deptByDn.put(n.getDn().toLowerCase(), n);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("[ldapSync] LDAP 拉取异常，跳过整轮同步（不改动数据库）：{}", e.getMessage(), e);
+            lastStatus = "FAILED_LDAP_ERROR";
+            lastSyncTime = startTime;
+            return statusMap("FAILED", "LDAP 接口异常，已跳过本轮同步");
+        }
+        String result = self.persistFullSync(deptByDn, userNodes);
+        ldapService.forceRefreshLdapCache();
+        orgTreeCacheService.forceRefresh();
+        lastStatus = "OK";
+        lastSyncTime = LocalDateTime.now();
+        log.info("[ldapSync] 全量同步成功：{}", result);
+        return statusMap("OK", result);
     }
 
     @Transactional

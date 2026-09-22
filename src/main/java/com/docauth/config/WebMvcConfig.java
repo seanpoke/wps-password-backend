@@ -35,6 +35,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
         var excludes = new java.util.ArrayList<String>();
         // 硬编码放行：接口类
         excludes.add("/account/logout");
+        excludes.add("/swagger-ui.html");
         excludes.add("/swagger-ui/**");
         excludes.add("/v3/api-docs/**");
         excludes.add("/webjars/**");

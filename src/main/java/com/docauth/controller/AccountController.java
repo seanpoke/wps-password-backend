@@ -80,10 +80,6 @@ public class AccountController {
             List<SysRole> roles = accountService.getUserRoles(currentAccount);
             String role = accountService.getPrimaryRole(roles);
             response.setRole(role);
-            response.setRoles(roles.stream().map(SysRole::getCode).collect(Collectors.toList()));
-            // 回填身份源（从 Redis 中的 UserContext 获取，避免刷新后缺 source）
-            response.setSource(org.springframework.util.StringUtils.hasText(UserContextHolder.getCurrentSource())
-                    ? UserContextHolder.getCurrentSource() : null);
 
             return ApiResponse.success(response);
         } catch (Exception e) {

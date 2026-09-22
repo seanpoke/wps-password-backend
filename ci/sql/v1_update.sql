@@ -82,11 +82,11 @@ INSERT INTO sys_role (code, name, priority, remark, create_time)
 SELECT 'admin', '超级管理员', 0, '全量可见', NOW()
 WHERE NOT EXISTS (SELECT 1 FROM sys_role WHERE code='admin');
 INSERT INTO sys_role (code, name, priority, remark, create_time)
-SELECT 'user', '普通用户', 10, '默认角色', NOW()
-WHERE NOT EXISTS (SELECT 1 FROM sys_role WHERE code='user');
-INSERT INTO sys_role (code, name, priority, remark, create_time)
-SELECT 'greenet', '绿网员工', 100, '绿网员工默认角色（LDAP 同步自动授予）', NOW()
+SELECT 'greenet', '绿网员工', 10, '绿网员工默认角色（LDAP 同步自动授予）', NOW()
 WHERE NOT EXISTS (SELECT 1 FROM sys_role WHERE code='greenet');
+INSERT INTO sys_role (code, name, priority, remark, create_time)
+SELECT 'user', '普通用户', 20, '默认角色', NOW()
+WHERE NOT EXISTS (SELECT 1 FROM sys_role WHERE code='user');
 
 -- 2.3 收尾列约束
 ALTER TABLE sys_role MODIFY COLUMN code    VARCHAR(50)  NOT NULL;

@@ -336,11 +336,11 @@ public class AdminController {
     }
 
     @PostMapping("/ldap-sync/full")
-    @Operation(summary = "立即全量同步：按当前 subTree 配置全量拉取 LDAP 并 upsert + 清理消失项（与确认式 apply 互斥）")
+    @Operation(summary = "立即全量同步：异步触发，秒回 STARTED；锁占用时返回 BUSY（与确认式 apply、定时同步互斥）")
     public ApiResponse<?> ldapSyncFull() {
         assertAdmin();
         try {
-            return ApiResponse.success(ldapSyncService.fullSync());
+            return ApiResponse.success(ldapSyncService.manualSync());
         } catch (RuntimeException e) {
             log.error("[ldapSyncFull] 失败: {}", e.getMessage(), e);
             return ApiResponse.error(500, "全量同步失败：" + e.getMessage());

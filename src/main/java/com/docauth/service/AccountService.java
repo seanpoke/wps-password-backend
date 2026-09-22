@@ -113,8 +113,6 @@ public class AccountService {
         response.setAccount(userContext.getAccount());
         response.setName(userContext.getName());
         response.setRole(primaryRole);
-        response.setRoles(userContext.getRoles());
-        response.setSource(source);
         response.setNeedChangePwd(needChangePwd);
 
         return response;
