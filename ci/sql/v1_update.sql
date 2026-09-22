@@ -69,13 +69,26 @@ SET @exist_email := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE
 SET @sql_email := IF(@exist_email>0, 'ALTER TABLE sys_user DROP COLUMN email', 'SELECT 1');
 PREPARE stmt_email FROM @sql_email; EXECUTE stmt_email; DEALLOCATE PREPARE stmt_email;
 
-/* ===================== 2. sys_role 演进（type/account → 角色定义表） ===================== */
--- 2.1 新增角色定义列（若尚未存在）
-SET @exist_role_col := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='sys_role' AND COLUMN_NAME='code');
-SET @sql_role_col := IF(@exist_role_col=0,
-    'ALTER TABLE sys_role ADD COLUMN code VARCHAR(50) NULL COMMENT "角色编码", ADD COLUMN name VARCHAR(100) NULL COMMENT "角色名称", ADD COLUMN priority INT NULL COMMENT "优先级(0最大)", ADD COLUMN remark VARCHAR(255) NULL COMMENT "说明"',
-    'SELECT 1');
-PREPARE stmt_role_col FROM @sql_role_col; EXECUTE stmt_role_col; DEALLOCATE PREPARE stmt_role_col;
+/* ===================== 2. sys_role 重建为角色定义表（终态，先删后建） ===================== */
+-- 仅当表仍是旧结构（含 type 列）时才删除重建；已是最新版则跳过，保证幂等且不丢数据。
+-- （旧结构为 init.sql 的 id/type/account/create_time，无 code/name/priority/remark，无法就地 ALTER 演进）
+SET @exist_role_type := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='sys_role' AND COLUMN_NAME='type');
+SET @drop_role := IF(@exist_role_type>0, 'DROP TABLE IF EXISTS sys_role', 'SELECT 1');
+PREPARE stmt_drop_role FROM @drop_role; EXECUTE stmt_drop_role; DEALLOCATE PREPARE stmt_drop_role;
+
+-- 终态表结构：与 SysRole 实体一致（id/code/name/priority/remark/create_time），无 type/account。
+CREATE TABLE IF NOT EXISTS sys_role
+(
+    id          BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键 ID',
+    code        VARCHAR(50)  NOT NULL COMMENT '角色编码（唯一）',
+    name        VARCHAR(100) NOT NULL COMMENT '角色名称',
+    priority    INT          NOT NULL DEFAULT 0 COMMENT '优先级（0 最大）',
+    remark      VARCHAR(255) NULL     COMMENT '说明',
+    create_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    UNIQUE KEY uk_sys_role_code (code)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT ='系统角色表';
 
 -- 2.2 初始化业务角色（幂等）
 INSERT INTO sys_role (code, name, priority, remark, create_time)
@@ -87,24 +100,6 @@ WHERE NOT EXISTS (SELECT 1 FROM sys_role WHERE code='greenet');
 INSERT INTO sys_role (code, name, priority, remark, create_time)
 SELECT 'user', '普通用户', 20, '默认角色', NOW()
 WHERE NOT EXISTS (SELECT 1 FROM sys_role WHERE code='user');
-
--- 2.3 收尾列约束
-ALTER TABLE sys_role MODIFY COLUMN code    VARCHAR(50)  NOT NULL;
-ALTER TABLE sys_role MODIFY COLUMN name    VARCHAR(100) NOT NULL;
-ALTER TABLE sys_role MODIFY COLUMN priority INT         NOT NULL DEFAULT 0;
-
-SET @exist_role_uk := (SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='sys_role' AND INDEX_NAME='uk_sys_role_code');
-SET @sql_role_uk := IF(@exist_role_uk=0, 'ALTER TABLE sys_role ADD UNIQUE KEY uk_sys_role_code (code)', 'SELECT 1');
-PREPARE stmt_role_uk FROM @sql_role_uk; EXECUTE stmt_role_uk; DEALLOCATE PREPARE stmt_role_uk;
-
--- 2.4 移除旧维度列（account / type，若仍存在）
-SET @exist_account := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='sys_role' AND COLUMN_NAME='account');
-SET @sql_account := IF(@exist_account>0, 'ALTER TABLE sys_role DROP COLUMN account', 'SELECT 1');
-PREPARE stmt_account FROM @sql_account; EXECUTE stmt_account; DEALLOCATE PREPARE stmt_account;
-
-SET @exist_type := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='sys_role' AND COLUMN_NAME='type');
-SET @sql_type := IF(@exist_type>0, 'ALTER TABLE sys_role DROP COLUMN type', 'SELECT 1');
-PREPARE stmt_type FROM @sql_type; EXECUTE stmt_type; DEALLOCATE PREPARE stmt_type;
 
 /* ===================== 3. doc_share_rel 演进（DN → 本地 id） ===================== */
 SET @exist_tid := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='doc_share_rel' AND COLUMN_NAME='target_id');
@@ -178,3 +173,26 @@ WHERE NOT EXISTS (SELECT 1 FROM doc_config WHERE type = 'ldap-config' AND `key` 
 INSERT INTO doc_config (type, `key`, value)
 SELECT 'ldap-config', 'syncEnabled', 'true'
 WHERE NOT EXISTS (SELECT 1 FROM doc_config WHERE type = 'ldap-config' AND `key` = 'syncEnabled');
+
+/* ===================== 8. 初始化管理员账号（admin / Gn@123456）并绑定 admin 角色 =====================
+   说明：不处理历史数据；以下均为幂等写法，可重复执行。
+   8.1 管理员登录接口加入匿名白名单（无需 token 即可访问，供管理平台登录）
+   8.2 创建 admin 本地账号，密码 Gn@123456 的 BCrypt 哈希（strength=10，与后端 BCryptPasswordEncoder 一致）
+   8.3 将 admin 账号绑定到 admin 角色（超级管理员，全量可见） */
+-- 8.1 匿名白名单
+INSERT INTO doc_config (`type`, `key`, `value`, `remark`)
+SELECT 'sys-config', 'no-token-url', '/admin/login', '管理员登录接口'
+WHERE NOT EXISTS (SELECT 1 FROM doc_config WHERE `type`='sys-config' AND `key`='no-token-url' AND `value`='/admin/login');
+
+-- 8.2 创建 admin 本地账号
+INSERT INTO sys_user (account, name, password_hash, must_change_pwd, source, create_time)
+SELECT 'admin', '管理员', '$2a$10$jJXYqj8DXhubzkALqLTW7.05gF7wieldcPVNvpYEfGrMJIrG1AAA.', 0, 'LOCAL', NOW()
+WHERE NOT EXISTS (SELECT 1 FROM sys_user WHERE account='admin');
+
+-- 8.3 绑定 admin 角色
+SET @admin_uid = (SELECT id FROM sys_user WHERE account='admin');
+SET @admin_rid = (SELECT id FROM sys_role WHERE code='admin');
+INSERT INTO sys_user_role (user_id, role_id)
+SELECT @admin_uid, @admin_rid
+WHERE @admin_uid IS NOT NULL AND @admin_rid IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM sys_user_role WHERE user_id=@admin_uid AND role_id=@admin_rid);

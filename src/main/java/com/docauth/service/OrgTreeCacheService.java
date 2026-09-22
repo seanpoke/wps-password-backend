@@ -48,6 +48,10 @@ public class OrgTreeCacheService {
     private final AtomicReference<List<LdapNodeDTO>> permissionTreeRef =
             new AtomicReference<>(Collections.emptyList());
 
+    /** LDAP 部门树（仅 LDAP 来源，DB 物化），供部门管理页「LDAP 部门」页签读取，绝不连 LDAP。 */
+    private final AtomicReference<List<LdapNodeDTO>> ldapDeptTreeRef =
+            new AtomicReference<>(Collections.emptyList());
+
     public OrgTreeCacheService(SysDeptRepository sysDeptRepository, SysUserRepository sysUserRepository) {
         this.sysDeptRepository = sysDeptRepository;
         this.sysUserRepository = sysUserRepository;
@@ -79,6 +83,11 @@ public class OrgTreeCacheService {
         return permissionTreeRef.get();
     }
 
+    /** LDAP 部门树（缓存快照，只读；仅 LDAP 来源，部门管理页「LDAP 部门」页签使用，绝不连 LDAP）。 */
+    public List<LdapNodeDTO> getLdapTree() {
+        return ldapDeptTreeRef.get();
+    }
+
     /** 重建：临时结构 -> 原子替换；异常保留旧缓存。 */
     private synchronized void rebuild() {
         try {
@@ -90,9 +99,20 @@ public class OrgTreeCacheService {
 
             List<LdapNodeDTO> tree = buildPermissionTree(depts, users);
 
+            // LDAP 部门树：仅 LDAP 来源，供部门管理页「LDAP 部门」页签（绝不连 LDAP）
+            List<SysDept> ldapDepts = depts.stream()
+                    .filter(d -> "LDAP".equals(d.getSource()))
+                    .collect(Collectors.toList());
+            List<SysUser> ldapUsers = users.stream()
+                    .filter(u -> "LDAP".equals(u.getSource()))
+                    .collect(Collectors.toList());
+            List<LdapNodeDTO> ldapTree = buildPermissionTree(ldapDepts, ldapUsers);
+
             deptBySourceRef.set(bySource);   // 原子替换
             permissionTreeRef.set(tree);     // 原子替换
-            log.info("[OrgTreeCache] 重建完成：部门 {} 个，用户 {} 个", depts.size(), users.size());
+            ldapDeptTreeRef.set(ldapTree);    // 原子替换
+            log.info("[OrgTreeCache] 重建完成：部门 {} 个，用户 {} 个；LDAP 部门树 {} 个",
+                    depts.size(), users.size(), ldapDepts.size());
         } catch (Exception e) {
             log.error("[OrgTreeCache] 重建失败，保留旧缓存", e);
         }

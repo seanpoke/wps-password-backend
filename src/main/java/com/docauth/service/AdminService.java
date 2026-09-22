@@ -73,9 +73,6 @@ public class AdminService {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
-    @Autowired
-    private LdapService ldapService;
-
     private static final String REL_USER = "USER";
     private static final String REL_ROLE = "ROLE";
 
@@ -646,6 +643,8 @@ public class AdminService {
     /* ===================== LDAP 辅助 ===================== */
 
     public List<LdapNodeDTO> ldapTree() {
-        return ldapService.getLdapTreeWithAuth(null);
+        // 部门管理页「LDAP 部门」页签：数据来自内存中的组织树缓存（DB 物化，启动构建 + 15min 周期刷新），
+        // 绝不直连 LDAP（除 LDAP 同步落库后 forceRefresh 外）。未同步时 sys_dept 无 LDAP 行，此处返回空树。
+        return orgTreeCacheService.getLdapTree();
     }
 }

@@ -245,7 +245,6 @@ public class LdapSyncService {
         try {
             List<LdapService.LdapTreeNode> all = ldapService.getAllLdapEntries(); // 远程：事务外获取
             String result = self.persistApply(req, all);
-            ldapService.forceRefreshLdapCache(); // 远程：事务外刷新 live-LDAP 缓存
             orgTreeCacheService.forceRefresh();  // 同步 sys_dept/sys_user 后刷新组织树缓存（DB-only）
             return result;
         } finally {
@@ -334,7 +333,6 @@ public class LdapSyncService {
             return statusMap("FAILED", "LDAP 接口异常，已跳过本轮同步");
         }
         String result = self.persistFullSync(deptByDn, userNodes);
-        ldapService.forceRefreshLdapCache();
         orgTreeCacheService.forceRefresh();
         lastStatus = "OK";
         lastSyncTime = LocalDateTime.now();

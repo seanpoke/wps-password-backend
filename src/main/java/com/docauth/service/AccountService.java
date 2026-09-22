@@ -119,6 +119,65 @@ public class AccountService {
     }
 
     /**
+     * 管理员登录：仅要求账号拥有 admin 角色（管理平台登录入口），无其他来源限制
+     * 密码校验按账号来源(source)路由：LDAP 来源走 LDAP 认证，LOCAL 来源走本地 BCrypt 校验
+     */
+    public LoginResponse adminLogin(String account, String password) {
+        log.info("[adminLogin] 管理员登录请求，账号: {}", account);
+
+        if (account == null || account.isEmpty() || password == null || password.isEmpty()) {
+            throw new RuntimeException("参数错误：账号和密码不能为空");
+        }
+
+        SysUser user = sysUserRepository.findByAccount(account).orElse(null);
+        if (user == null) {
+            throw new RuntimeException("认证失败：账号或密码错误");
+        }
+        String source = user.getSource();
+        if ("LDAP".equals(source)) {
+            // LDAP 来源：走 LDAP 校验
+            if (ldapService.authenticate(account, password) == null) {
+                throw new RuntimeException("认证失败：账号或密码错误");
+            }
+        } else {
+            // LOCAL 来源：本地 BCrypt 校验
+            if (user.getPasswordHash() == null || !passwordEncoder.matches(password, user.getPasswordHash())) {
+                throw new RuntimeException("认证失败：账号或密码错误");
+            }
+        }
+
+        // 仅允许绑定了 admin 角色（code=admin）的账号
+        List<SysRole> roles = getUserRoles(account);
+        boolean isAdmin = roles.stream().anyMatch(r -> "admin".equalsIgnoreCase(r.getCode()));
+        if (!isAdmin) {
+            throw new RuntimeException("无权限：该账号不是管理员");
+        }
+
+        // 生成 token 并写入 Redis（与 login 保持一致）
+        String token = UUID.randomUUID().toString();
+        UserContext userContext = new UserContext();
+        userContext.setAccount(user.getAccount());
+        userContext.setName(user.getName());
+        userContext.setSource(source);
+        userContext.setRole("admin");
+        userContext.setRoles(roles.stream().map(SysRole::getCode).collect(Collectors.toList()));
+
+        Long expireMinutes = configService.getRedisTokenExpireMinutes();
+        redisUtil.setObject(token, userContext, expireMinutes, TimeUnit.MINUTES);
+
+        boolean needChangePwd = user.getMustChangePwd() != null && user.getMustChangePwd() == 1;
+        log.info("[adminLogin] 管理员登录成功，账号: {}, 姓名: {}", account, user.getName());
+
+        LoginResponse response = new LoginResponse();
+        response.setToken(token);
+        response.setAccount(userContext.getAccount());
+        response.setName(userContext.getName());
+        response.setRole("admin");
+        response.setNeedChangePwd(needChangePwd);
+        return response;
+    }
+
+    /**
      * 获取用户角色列表（通过 sys_user_role 关联，多角色取并集）
      */
     public List<SysRole> getUserRoles(String account) {

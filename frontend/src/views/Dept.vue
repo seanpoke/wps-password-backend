@@ -107,7 +107,7 @@ const refMap = computed(() => {
 
 const localCount = computed(() => list.value.filter(x => x.source === 'LOCAL').length)
 
-// LDAP 页签直接来自内存缓存（deptNodeCache），不再读 DB 的 source=LDAP 行
+// LDAP 页签来自 OrgTreeCache 内存缓存（DB 物化：启动构建 + 15min 周期刷新，绝不直连 LDAP；未同步时 sys_dept 无 LDAP 行则显示 0）
 const ldapNodes = ref([])
 const ldapTreeData = computed(() => {
   // 用 DB 中已同步的 LDAP 部门 path(dn) -> id 映射，保留可见性角标

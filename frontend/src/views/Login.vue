@@ -8,14 +8,14 @@
       </div>
       <el-form :model="form" :rules="rules" ref="formRef" @submit.prevent="onSubmit" label-position="top">
         <el-form-item label="账号" prop="account">
-          <el-input v-model="form.account" placeholder="如 admin_local" :prefix-icon="User" />
+          <el-input v-model="form.account" placeholder="如 admin" :prefix-icon="User" />
         </el-form-item>
         <el-form-item label="密码" prop="password">
           <el-input v-model="form.password" type="password" show-password placeholder="请输入密码" :prefix-icon="Key" @keyup.enter="onSubmit" />
         </el-form-item>
         <el-button type="primary" :loading="loading" class="submit" @click="onSubmit">登 录</el-button>
       </el-form>
-      <p class="tip">提示：管理员账号为 admin_local；LDAP 内部用户不支持后台管理。</p>
+      <p class="tip">提示：仅管理员角色账号可登录后台管理。</p>
     </el-card>
   </div>
 </template>
@@ -32,7 +32,7 @@ const router = useRouter()
 const route = useRoute()
 const formRef = ref()
 const loading = ref(false)
-const form = reactive({ account: 'admin_local', password: '123456' })
+const form = reactive({ account: 'admin', password: '' })
 const rules = {
   account: [{ required: true, message: '请输入账号', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }]

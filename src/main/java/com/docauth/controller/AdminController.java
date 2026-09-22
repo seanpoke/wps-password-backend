@@ -3,10 +3,13 @@ package com.docauth.controller;
 import com.docauth.context.UserContextHolder;
 import com.docauth.dto.ApiResponse;
 import com.docauth.dto.AdminRequests;
+import com.docauth.dto.LoginRequest;
+import com.docauth.dto.LoginResponse;
 import com.docauth.dto.SyncApplyRequest;
 
 import com.docauth.enums.UserSource;
 
+import com.docauth.service.AccountService;
 import com.docauth.service.AdminService;
 import com.docauth.service.LdapSyncService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -29,6 +32,9 @@ public class AdminController {
     @Autowired
     private LdapSyncService ldapSyncService;
 
+    @Autowired
+    private AccountService accountService;
+
     private void assertAdmin() {
         com.docauth.context.UserContext uc = UserContextHolder.getUserContext();
         if (uc == null) {
@@ -36,6 +42,30 @@ public class AdminController {
         }
         if (!"admin".equals(uc.getRole())) {
             throw new com.docauth.exception.ApiException(403, "无权限：需要管理员角色");
+        }
+    }
+
+    /* ===================== 管理员登录 ===================== */
+
+    @PostMapping("/login")
+    @Operation(summary = "管理员登录", description = "仅支持拥有 admin 角色的账号登录（密码按账号来源校验），返回 token 用于后续请求鉴权")
+    public ApiResponse<?> adminLogin(@RequestBody LoginRequest request) {
+        log.info("[adminLogin] 请求参数: account={}", request.getAccount());
+
+        if (request.getAccount() == null || request.getAccount().isEmpty() ||
+                request.getPassword() == null || request.getPassword().isEmpty()) {
+            return ApiResponse.error(400, "参数错误：账号和密码不能为空");
+        }
+
+        try {
+            LoginResponse response = accountService.adminLogin(request.getAccount(), request.getPassword());
+            return ApiResponse.success(response);
+        } catch (RuntimeException e) {
+            log.warn("[adminLogin] 登录失败: {}", e.getMessage());
+            return ApiResponse.error(401, e.getMessage());
+        } catch (Exception e) {
+            log.error("[adminLogin] 登录异常: {}", e.getMessage(), e);
+            return ApiResponse.error(500, "登录失败：系统异常");
         }
     }
 
