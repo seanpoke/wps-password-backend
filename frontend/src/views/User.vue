@@ -108,12 +108,12 @@
             :render-after-expand="false"
             collapse-tags
             collapse-tags-tooltip
-            placeholder="选择可见部门（不选则仅默认本部门）"
+            placeholder="选择可见部门（不绑定则看不到任何部门）"
             clearable
             style="width:100%"
             @change="onVisibleChange"
           />
-          <div class="scope-hint">可见部门仅决定该用户在组织树中可看到的部门，<b>不等于</b>其文档阅读权限；勾选「全部」即代表可查看所有部门。</div>
+          <div class="scope-hint">可见部门仅决定该用户在组织树中可看到的部门，<b>不等于</b>其文档阅读权限；勾选「全部」即代表可查看所有部门。未绑定任何可见部门（且无角色绑定）的用户将看不到任何部门（纯显式授权）。</div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -157,12 +157,12 @@
             :render-after-expand="false"
             collapse-tags
             collapse-tags-tooltip
-            placeholder="选择可见部门（不选则仅默认本部门）"
+            placeholder="选择可见部门（不绑定则看不到任何部门）"
             clearable
             style="width:100%"
             @change="onVisibleChange"
           />
-          <div class="scope-hint">可见部门仅决定该用户在组织树中可看到的部门，<b>不等于</b>其文档阅读权限；勾选「全部」即代表可查看所有部门。</div>
+          <div class="scope-hint">可见部门仅决定该用户在组织树中可看到的部门，<b>不等于</b>其文档阅读权限；勾选「全部」即代表可查看所有部门。未绑定任何可见部门（且无角色绑定）的用户将看不到任何部门（纯显式授权）。</div>
         </el-form-item>
       </el-form>
       <template #footer>

@@ -213,45 +213,5 @@ public class EccUtil {
         return new String(decryptedBytes, StandardCharsets.UTF_8);
     }
 
-    /**
-     * 测试方法
-     */
-    public static void main(String[] args) throws Exception {
-        // 生成密钥对
-        Map<String, String> keyPair = EccUtil.generateKeyPair();
-        String publicKey = keyPair.get("publicKey");
-        String privateKey = keyPair.get("privateKey");
 
-        System.out.println("========== ECC加密测试 ==========");
-        System.out.println("公钥：" + publicKey);
-        System.out.println("公钥长度：" + publicKey.length());
-        System.out.println("私钥长度：" + privateKey.length());
-        System.out.println("私钥：" + privateKey);
-        System.out.println();
-
-        // 测试数据
-        String originalData = "sidnficksn12";
-        System.out.println("原始数据：" + originalData);
-        System.out.println("原始数据长度：" + originalData.length());
-        System.out.println();
-
-        // 加密
-        String encryptedData = EccUtil.encrypt(originalData, publicKey);
-        System.out.println("加密数据：" + encryptedData);
-        System.out.println("加密数据长度：" + encryptedData.length());
-        System.out.println();
-
-        // 解密
-        String decryptedData = EccUtil.decrypt(encryptedData, privateKey);
-        System.out.println("解密数据：" + decryptedData);
-        System.out.println("解密是否成功：" + originalData.equals(decryptedData));
-        System.out.println();
-
-        // 对比RSA
-        System.out.println("========== 与RSA对比 ==========");
-        System.out.println("ECC密文长度：" + encryptedData.length() + " 字符");
-        System.out.println("RSA(2048)密文长度：约344 字符");
-        System.out.println("RSA(1024)密文长度：约172 字符");
-        System.out.println("ECC优势：密文更短，安全性相当或更高");
-    }
 }

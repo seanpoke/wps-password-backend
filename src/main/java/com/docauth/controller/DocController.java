@@ -48,7 +48,7 @@ public class DocController {
     }
 
     @PostMapping("/password")
-    @Operation(summary = "获取文档密码", description = "通过RSA加密的密码获取文档解密后的密码，需要验证用户权限")
+    @Operation(summary = "获取文档密码", description = "通过ECC加密的密码获取文档解密后的密码，需要验证用户权限")
     public ApiResponse<?> getDocPassword(@RequestBody DocPasswordRequest request) {
         log.info("[getDocPassword] 请求参数: docId={}, keyVersion={}", request.getDocId(), request.getKeyVersion());
 
@@ -93,6 +93,19 @@ public class DocController {
         } catch (Exception e) {
             log.error("[getAuthTree] 系统异常: {}", e.getMessage(), e);
             return ApiResponse.error(500, "获取授权树失败：系统异常");
+        }
+    }
+
+    @PostMapping("/auth/tree/refresh")
+    @Operation(summary = "刷新组织树缓存（DB-only）", description = "管理员主动触发：按当前 sys_dept/sys_user 重建权限树与部门缓存，不连 LDAP")
+    public ApiResponse<?> refreshAuthTree() {
+        log.info("[refreshAuthTree] 管理员主动刷新组织树缓存");
+        try {
+            docService.refreshOrgTree();
+            return ApiResponse.success("组织树缓存刷新成功");
+        } catch (Exception e) {
+            log.error("[refreshAuthTree] 系统异常: {}", e.getMessage(), e);
+            return ApiResponse.error(500, "刷新组织树缓存失败：系统异常");
         }
     }
 
@@ -141,11 +154,11 @@ public class DocController {
             docService.saveLog(
                     request.getDocId(),
                     request.getPath(),
-                    request.getKeyVersion(),
                     request.getBeforePassword(),
                     request.getAfterPassword(),
                     request.getPossiblePassword(),
-                    request.getPlatform()
+                    request.getPlatform(),
+                    request.getKeyVersion()
             );
             return ApiResponse.success("操作成功");
         } catch (Exception e) {

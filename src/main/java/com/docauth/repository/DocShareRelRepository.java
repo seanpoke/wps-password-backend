@@ -11,8 +11,6 @@ import java.util.List;
 public interface DocShareRelRepository extends JpaRepository<DocShareRel, Long> {
     List<DocShareRel> findByUid(String uid);
 
-    DocShareRel findByUidAndTypeAndName(String uid, Integer type, String name);
-
     /** 将目标（部门/用户）相关的授权标记为失效（LDAP 移除或删除时保留审计） */
     @Modifying
     @Query("UPDATE DocShareRel r SET r.invalid = 1 WHERE r.targetId = :tid")
@@ -26,7 +24,7 @@ public interface DocShareRelRepository extends JpaRepository<DocShareRel, Long> 
     /** 物理删除某目标类型的授权关系（同步删除/更新时彻底清理） */
     void deleteByTargetIdAndType(@Param("tid") Long tid, @Param("type") int type);
 
-    /** 统计某目标有效（未失效）的授权条数，type=0 表示部门 */
-    @Query("SELECT COUNT(r) FROM DocShareRel r WHERE r.targetId = :tid AND r.type = :type AND r.invalid = 0")
-    long countValidByTargetIdAndType(@Param("tid") Long tid, @Param("type") int type);
+    /** 按 targetId 分组聚合部门(type=0)有效授权条数，供部门树徽标一次性统计，避免逐部门 COUNT */
+    @Query("SELECT r.targetId, COUNT(r) FROM DocShareRel r WHERE r.type = 0 AND r.invalid = 0 GROUP BY r.targetId")
+    List<Object[]> countValidDeptAuthGrouped();
 }

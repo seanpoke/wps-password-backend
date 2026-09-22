@@ -2,6 +2,7 @@ package com.docauth.service;
 
 import com.docauth.dto.SyncApplyRequest;
 import com.docauth.dto.SyncDiffNode;
+import com.docauth.service.ConfigService;
 import com.docauth.entity.SysDept;
 import com.docauth.entity.SysRole;
 import com.docauth.entity.SysUser;
@@ -30,6 +31,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.HashSet;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.time.LocalDateTime;
 
 /**
  * LDAP 同步服务
@@ -60,6 +63,16 @@ public class LdapSyncService {
     @Autowired
     @Lazy
     private LdapSyncService self;
+
+    @Autowired
+    private ConfigService configService;
+
+    /** 同步互斥锁：定时 fullSync 与手动 apply 共用，避免重叠写 */
+    private final AtomicBoolean syncing = new AtomicBoolean(false);
+    /** 上次同步状态（OK / SKIPPED_NO_SUBTREE / FAILED_LDAP_ERROR 等） */
+    private volatile String lastStatus;
+    /** 上次同步完成时间 */
+    private volatile LocalDateTime lastSyncTime;
 
     private void deleteGone(Map<String, LdapService.LdapTreeNode> deptMap, List<LdapService.LdapTreeNode> userNodes) {
         // 先收集 LDAP 中已消失的部门 / 用户 id，再按 IN 批量清理（一条 SQL 删多行）
@@ -217,12 +230,109 @@ public class LdapSyncService {
         return roots;
     }
 
+    @Autowired
+    private OrgTreeCacheService orgTreeCacheService;
+
     // ============ 确认应用 ============
     public String apply(SyncApplyRequest req) {
-        List<LdapService.LdapTreeNode> all = ldapService.getAllLdapEntries(); // 远程：事务外获取
-        String result = self.persistApply(req, all);
-        ldapService.forceRefreshLdapCache(); // 远程：事务外刷新缓存
-        return result;
+        if (!syncing.compareAndSet(false, true)) {
+            throw new RuntimeException("已有同步任务进行中，请稍后重试");
+        }
+        try {
+            List<LdapService.LdapTreeNode> all = ldapService.getAllLdapEntries(); // 远程：事务外获取
+            String result = self.persistApply(req, all);
+            ldapService.forceRefreshLdapCache(); // 远程：事务外刷新 live-LDAP 缓存
+            orgTreeCacheService.forceRefresh();  // 同步 sys_dept/sys_user 后刷新组织树缓存（DB-only）
+            return result;
+        } finally {
+            syncing.set(false);
+        }
+    }
+
+    /**
+     * 定时/手动全量同步：
+     * <ol>
+     *   <li>未配置 subTree → 不执行（SKIPPED_NO_SUBTREE）。</li>
+     *   <li>按 subTree 逐根拉取；任一已配置根 LDAP 接口异常 → 跳过整轮（零写入零删除，FAILED_LDAP_ERROR）。</li>
+     *   <li>连接正常（含某根返回 0 条）仍继续，以配置范围为唯一真相；事务内 upsert 全部 + deleteGone 清理消失项（含 0 条根下旧数据，2b）。</li>
+     *   <li>完成后刷新 live-LDAP 缓存与组织树缓存。</li>
+     * </ol>
+     * 与 apply 共用 syncing 锁，避免重叠写。
+     */
+    public Map<String, Object> fullSync() {
+        if (!syncing.compareAndSet(false, true)) {
+            return statusMap("SKIPPED", "已有同步任务进行中，跳过本次");
+        }
+        LocalDateTime startTime = LocalDateTime.now();
+        try {
+            List<String> trees = configService.getLdapTrees();
+            if (trees == null || trees.isEmpty()) {
+                lastStatus = "SKIPPED_NO_SUBTREE";
+                lastSyncTime = startTime;
+                return statusMap("SKIPPED", "未配置 subTree，不执行同步");
+            }
+            Map<String, LdapService.LdapTreeNode> deptByDn = new HashMap<>();
+            List<LdapService.LdapTreeNode> userNodes = new ArrayList<>();
+            try {
+                Map<String, List<LdapService.LdapTreeNode>> byRoot = ldapService.getAllLdapEntriesByRoot();
+                for (List<LdapService.LdapTreeNode> entries : byRoot.values()) {
+                    for (LdapService.LdapTreeNode n : entries) {
+                        if (attr(n, "sAMAccountName") != null) {
+                            userNodes.add(n);
+                        } else {
+                            deptByDn.put(n.getDn().toLowerCase(), n);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.error("[ldapSync] LDAP 拉取异常，跳过整轮同步（不改动数据库）：{}", e.getMessage(), e);
+                lastStatus = "FAILED_LDAP_ERROR";
+                lastSyncTime = startTime;
+                return statusMap("FAILED", "LDAP 接口异常，已跳过本轮同步");
+            }
+            String result = self.persistFullSync(deptByDn, userNodes);
+            ldapService.forceRefreshLdapCache();
+            orgTreeCacheService.forceRefresh();
+            lastStatus = "OK";
+            lastSyncTime = LocalDateTime.now();
+            log.info("[ldapSync] 全量同步成功：{}", result);
+            return statusMap("OK", result);
+        } finally {
+            syncing.set(false);
+        }
+    }
+
+    @Transactional
+    public String persistFullSync(Map<String, LdapService.LdapTreeNode> deptByDn,
+                                  List<LdapService.LdapTreeNode> userNodes) {
+        // 部门按 DN 长度升序（父优先）后再 upsert，保证父部门先建
+        List<LdapService.LdapTreeNode> depts = new ArrayList<>(deptByDn.values());
+        depts.sort(Comparator.comparingInt(n -> n.getDn() == null ? 0 : n.getDn().length()));
+        for (LdapService.LdapTreeNode n : depts) {
+            upsertDept(n);
+        }
+        for (LdapService.LdapTreeNode n : userNodes) {
+            upsertUser(n);
+        }
+        // 以配置范围为唯一真相：LDAP 中已消失（含本次 0 条的根下旧数据）一并清理
+        deleteGone(deptByDn, userNodes);
+        return String.format("全量同步完成：部门 %d，用户 %d", deptByDn.size(), userNodes.size());
+    }
+
+    /** 同步状态（供前端「上次同步」展示与手动触发结果） */
+    public Map<String, Object> getStatus() {
+        Map<String, Object> m = new HashMap<>();
+        m.put("running", syncing.get());
+        m.put("lastStatus", lastStatus);
+        m.put("lastSyncTime", lastSyncTime);
+        return m;
+    }
+
+    private Map<String, Object> statusMap(String status, String message) {
+        Map<String, Object> m = new HashMap<>();
+        m.put("status", status);
+        m.put("message", message);
+        return m;
     }
 
     @Transactional
@@ -239,7 +349,7 @@ public class LdapSyncService {
             if (attr(n, "sAMAccountName") != null) {
                 if (upsertUser(n) != null) upserted++;
             } else {
-                if (upsertDept(n, true) != null) upserted++;
+                if (upsertDept(n) != null) upserted++;
             }
         }
         int removed = 0;
@@ -274,14 +384,12 @@ public class LdapSyncService {
     }
 
     // ============ 工具 ============
-    private SysDept upsertDept(LdapService.LdapTreeNode n, boolean clearStaleOnUpdate) {
+    private SysDept upsertDept(LdapService.LdapTreeNode n) {
         SysDept d = sysDeptRepository.findByPathAndSource(n.getDn(), "LDAP").orElse(null);
         if (d == null) { d = new SysDept(); }
-        else if (clearStaleOnUpdate) {
-            // 更新（部门移动/改名）：清除陈旧授权与权限组范围，由管理员重新授权
-            visibleDeptRelRepository.deleteByDeptId(d.getId());
-            docShareRelRepository.deleteByTargetIdAndType(d.getId(), 0);
-        }
+        // 注意：部门改名/移动（CHANGED）不再清除其文档授权与可见范围。
+        // 授权清理仅在该部门真正从 LDAP 消失（GONE）时由 deleteGone/removeDept 负责，
+        // 避免一次普通改名/移动静默删除该部门所有文档授权。
         d.setName(firstNonNull(attr(n, "name"), attr(n, "ou"), extractCn(n.getDn())));
         d.setPath(n.getDn());
         d.setSource("LDAP");

@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 
 /**
  * 外部三方用户表（本地账号 + BCrypt 密码）
- * 内部 LDAP 用户不落此表，仅通过 user_scope_group.account 字符串绑定部门可见范围
+ * 内部 LDAP 用户不落此表；LOCAL 外部用户通过 visible_dept_rel 绑定可见部门
  */
 @Data
 @Entity

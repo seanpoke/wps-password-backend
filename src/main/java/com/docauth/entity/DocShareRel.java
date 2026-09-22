@@ -21,7 +21,7 @@ public class DocShareRel {
     /** id 化授权目标：type=0 -> sys_dept.id；type=1 -> sys_user.id */
     private Long targetId;
 
-    /** 0=有效，1=已失效（历史 DN 孤儿 / 被删除部门用户），运行期忽略 */
+    /** 0=有效，1=已失效（被删除的部门/用户授权），运行期忽略 */
     @Column(nullable = false, columnDefinition = "tinyint(1) default 0")
     private Integer invalid = 0;
 

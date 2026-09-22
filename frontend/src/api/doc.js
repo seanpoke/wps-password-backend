@@ -14,3 +14,9 @@ export function getDocDetail(id) {
 export function deleteDoc(id) {
   return request.delete(`/admin/docs/${id}`)
 }
+
+// 主动刷新组织树缓存（管理平台按钮触发，DB-only）：仅按 sys_dept/sys_user 重建
+// 权限树与部门缓存、原子替换、不连 LDAP；重建后客户端（安卓等）拉取 /doc/auth/tree 即获最新结构。
+export function refreshOrgTree() {
+  return request.post('/doc/auth/tree/refresh')
+}

@@ -15,6 +15,9 @@ public interface SysUserRoleRepository extends JpaRepository<SysUserRole, Long> 
 
     List<SysUserRole> findByUserId(Long userId);
 
+    /** 批量查询（IN），一次取回多用户的所有角色绑定，避免逐用户查询 */
+    List<SysUserRole> findByUserIdIn(List<Long> userIds);
+
     List<SysUserRole> findByRoleId(Long roleId);
 
     Optional<SysUserRole> findByUserIdAndRoleId(Long userId, Long roleId);

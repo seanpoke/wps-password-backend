@@ -159,12 +159,18 @@ async function save() {
 }
 
 async function remove(row) {
-  await ElMessageBox.confirm(`确认删除角色「${row.name}」？将级联清理用户/部门关联`, '提示', { type: 'warning' })
+  try {
+    await ElMessageBox.confirm(`确认删除角色「${row.name}」？将级联清理用户/部门关联`, '提示', { type: 'warning' })
+  } catch {
+    return
+  }
   try {
     await deleteRole(row.id)
     ElMessage.success('已删除')
     await load()
-  } catch (e) {}
+  } catch (e) {
+    ElMessage.error('删除失败：' + (e?.response?.data?.message || e?.response?.data?.msg || e?.message || e))
+  }
 }
 
 onMounted(async () => {

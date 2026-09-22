@@ -28,12 +28,11 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        // 从数据库获取无需 Token 验证的 URL 列表
-        var noTokenUrls = configService.getNoTokenUrls();
-
-        // 合并数据库配置和硬编码的排除路径
+        // 硬编码放行：接口类
+        // 注意：不再把 noTokenUrls（/account/login、/config/**）加入 excludePathPatterns，
+        // 改由 TokenInterceptor 以“可选鉴权”方式处理：白名单路径匿名可访问（如 GET /config/ldap），
+        // 但携带 token 时仍填充 UserContext，使 ConfigController.assertAdmin 等鉴权生效。
         var excludes = new java.util.ArrayList<String>();
-        excludes.addAll(noTokenUrls);
         // 硬编码放行：接口类
         excludes.add("/account/logout");
         excludes.add("/swagger-ui/**");

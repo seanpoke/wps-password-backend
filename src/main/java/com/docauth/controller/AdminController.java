@@ -155,7 +155,7 @@ public class AdminController {
         return ApiResponse.success("重置成功");
     }
 
-    /* =====================     /* ===================== visible dept scope (no group) ===================== */
+    /* ===================== 可见部门范围（无权限组） ===================== */
 
     @GetMapping("/visible-depts")
     @Operation(summary = "query visible depts bound to a user/role")
@@ -227,7 +227,9 @@ public class AdminController {
     public ApiResponse<?> listDeptVisibleRefs(@PathVariable Long id) {
         assertAdmin();
         return ApiResponse.success(adminService.listDeptVisibleRefs(id));
-    }/* ===================== 角色 ===================== */
+    }
+
+    /* ===================== 角色 ===================== */
 
     @GetMapping("/roles")
     @Operation(summary = "角色列表（按优先级升序，附带可见部门权限）")
@@ -331,5 +333,24 @@ public class AdminController {
             log.error("[ldapSyncApply] 失败: {}", e.getMessage(), e);
             return ApiResponse.error(500, "同步确认失败：" + e.getMessage());
         }
+    }
+
+    @PostMapping("/ldap-sync/full")
+    @Operation(summary = "立即全量同步：按当前 subTree 配置全量拉取 LDAP 并 upsert + 清理消失项（与确认式 apply 互斥）")
+    public ApiResponse<?> ldapSyncFull() {
+        assertAdmin();
+        try {
+            return ApiResponse.success(ldapSyncService.fullSync());
+        } catch (RuntimeException e) {
+            log.error("[ldapSyncFull] 失败: {}", e.getMessage(), e);
+            return ApiResponse.error(500, "全量同步失败：" + e.getMessage());
+        }
+    }
+
+    @GetMapping("/ldap-sync/status")
+    @Operation(summary = "查询上次同步状态（running / lastStatus / lastSyncTime）")
+    public ApiResponse<?> ldapSyncStatus() {
+        assertAdmin();
+        return ApiResponse.success(ldapSyncService.getStatus());
     }
 }

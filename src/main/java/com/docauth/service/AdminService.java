@@ -82,9 +82,19 @@ public class AdminService {
 
     /* ===================== 部门 ===================== */
 
+    @Autowired
+    private OrgTreeCacheService orgTreeCacheService;
+
     @Transactional(readOnly = true)
     public List<SysDept> listDepts() {
-        return sysDeptRepository.findAll();
+        // LDAP 部门只读不可编辑，从组织树缓存读取；LOCAL 部门可编辑，实时查 DB
+        List<SysDept> ldap = orgTreeCacheService.getLdapDepts();
+        List<SysDept> local = sysDeptRepository.findAll().stream()
+                .filter(d -> !"LDAP".equals(d.getSource()))
+                .collect(Collectors.toList());
+        List<SysDept> all = new ArrayList<>(ldap);
+        all.addAll(local);
+        return all;
     }
 
     @Transactional
@@ -121,7 +131,7 @@ public class AdminService {
             for (SysDept child : sysDeptRepository.findAll()) {
                 if (child.getId().equals(id)) continue;
                 String cp = child.getPath();
-                if (cp != null && cp.length() > oldPath.length() && cp.endsWith(oldPath)) {
+                if (cp != null && cp.length() > oldPath.length() && cp.endsWith("," + oldPath)) {
                     child.setPath(cp.substring(0, cp.length() - oldPath.length()) + newPath);
                     sysDeptRepository.save(child);
                 }
@@ -141,7 +151,7 @@ public class AdminService {
         subtree.add(d);
         for (SysDept x : sysDeptRepository.findAll()) {
             String p = x.getPath();
-            if (p != null && p.length() > d.getPath().length() && p.endsWith(d.getPath())) {
+            if (p != null && p.length() > d.getPath().length() && p.endsWith("," + d.getPath())) {
                 subtree.add(x);
             }
         }
@@ -202,6 +212,24 @@ public class AdminService {
             sysDeptRepository.findAllById(deptIds).forEach(d -> deptNames.put(d.getId(), d.getName()));
         }
 
+        // 批量预加载本页用户的角色绑定（一次 IN 查询）+ 一次性加载涉及角色，避免 N+1
+        Set<Long> pageUserIds = new HashSet<>();
+        p.getContent().forEach(u -> pageUserIds.add(u.getId()));
+        Map<Long, List<Long>> userIdToRoleIds = new HashMap<>();
+        if (!pageUserIds.isEmpty()) {
+            for (SysUserRole ur : sysUserRoleRepository.findByUserIdIn(new ArrayList<>(pageUserIds))) {
+                userIdToRoleIds.computeIfAbsent(ur.getUserId(), k -> new ArrayList<>()).add(ur.getRoleId());
+            }
+        }
+        Set<Long> involvedRoleIds = new HashSet<>();
+        userIdToRoleIds.values().forEach(involvedRoleIds::addAll);
+        Map<Long, SysRole> roleMap = new HashMap<>();
+        if (!involvedRoleIds.isEmpty()) {
+            for (SysRole r : sysRoleRepository.findAllById(involvedRoleIds)) {
+                roleMap.put(r.getId(), r);
+            }
+        }
+
         List<UserPageVo> rows = new ArrayList<>();
         for (SysUser u : p.getContent()) {
             UserPageVo vo = new UserPageVo();
@@ -214,9 +242,11 @@ public class AdminService {
             vo.setMustChangePwd(u.getMustChangePwd());
             vo.setUpdateTime(u.getUpdateTime());
             List<UserPageVo.RoleItem> roles = new ArrayList<>();
-            for (SysUserRole ur : sysUserRoleRepository.findByUserId(u.getId())) {
-                sysRoleRepository.findById(ur.getRoleId())
-                        .ifPresent(r -> roles.add(new UserPageVo.RoleItem(r.getId(), r.getCode(), r.getName())));
+            for (Long rid : userIdToRoleIds.getOrDefault(u.getId(), new ArrayList<>())) {
+                SysRole r = roleMap.get(rid);
+                if (r != null) {
+                    roles.add(new UserPageVo.RoleItem(r.getId(), r.getCode(), r.getName()));
+                }
             }
             vo.setRoles(roles);
             rows.add(vo);
@@ -490,7 +520,7 @@ public class AdminService {
         sysUserRoleRepository.deleteById(id);
     }
 
-    /* =====================     /* ===================== visible dept scope (no group) ===================== */
+    /* ===================== 可见部门范围（无权限组） ===================== */
 
     @Transactional(readOnly = true)
     public List<SysDept> listVisibleDepts(String relType, Long relId) {
@@ -543,12 +573,18 @@ public class AdminService {
                 roleLabelsMap.computeIfAbsent(r.getDeptId(), k -> new ArrayList<>()).add(name);
             }
         }
+        // 一次聚合查询部门文档授权计数（type=0），避免逐部门 COUNT 的 N+1
+        Map<Long, Long> docAuthCountMap = new HashMap<>();
+        for (Object[] row : docShareRelRepository.countValidDeptAuthGrouped()) {
+            docAuthCountMap.put((Long) row[0], (Long) row[1]);
+        }
+
         List<DeptRefVo> result = new ArrayList<>();
         for (SysDept d : sysDeptRepository.findAll()) {
             List<String> labels = relLabelsMap.getOrDefault(d.getId(), new ArrayList<>());
             List<String> users = userLabelsMap.getOrDefault(d.getId(), new ArrayList<>());
             List<String> roles = roleLabelsMap.getOrDefault(d.getId(), new ArrayList<>());
-            long docAuthCount = docShareRelRepository.countValidByTargetIdAndType(d.getId(), 0);
+            long docAuthCount = docAuthCountMap.getOrDefault(d.getId(), 0L);
             result.add(new DeptRefVo(d.getId(), labels, users, roles, docAuthCount));
         }
         return result;

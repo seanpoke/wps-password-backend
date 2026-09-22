@@ -1,5 +1,53 @@
 <template>
-  <el-card shadow="never">
+  <el-card shadow="never" class="settings">
+    <template #header>
+      <div class="hd">
+        <span>同步设置</span>
+        <div>
+          <el-button type="primary" :loading="saving" @click="saveConfig">保存配置</el-button>
+          <el-button type="success" :loading="syncingFull" @click="doFullSync">立即全量同步</el-button>
+        </div>
+      </div>
+    </template>
+    <el-form :model="cfg" label-width="130px" class="cfg-form">
+      <el-form-item label="自动同步">
+        <el-switch v-model="cfg.syncEnabled" />
+      </el-form-item>
+      <el-form-item label="同步时间">
+        <div class="time-rows">
+          <div v-for="(t, i) in cfg.syncTimesList" :key="i" class="time-row">
+            <el-time-picker v-model="cfg.syncTimesList[i]" value-format="HH:mm" format="HH:mm" placeholder="选择时间" />
+            <el-button text type="danger" @click="removeTime(i)">移除</el-button>
+          </div>
+          <el-button text type="primary" @click="addTime">+ 添加时间</el-button>
+        </div>
+        <div class="hint">逗号分隔的多个时刻（如 10:00,20:00）；每天到点自动全量同步。</div>
+      </el-form-item>
+      <el-divider />
+      <el-form-item label="LDAP 地址">
+        <el-input v-model="cfg.url" placeholder="ldap://host:389" />
+      </el-form-item>
+      <el-form-item label="Base DN">
+        <el-input v-model="cfg.baseDn" placeholder="dc=example,dc=com（仅登录搜索基与目录边界）" />
+      </el-form-item>
+      <el-form-item label="绑定账号">
+        <el-input v-model="cfg.username" />
+      </el-form-item>
+      <el-form-item label="绑定密码">
+        <el-input v-model="cfg.password" type="password" show-password placeholder="留空表示不修改" />
+      </el-form-item>
+      <el-form-item label="subTree（每行一个）">
+        <el-input v-model="treesText" type="textarea" :rows="4" placeholder="ou=dept,dc=example,dc=com" />
+        <div class="hint">同步与组织树仅展示这些根；未配置则不同步、不展示任何部门。</div>
+      </el-form-item>
+    </el-form>
+    <el-alert v-if="status" type="info" :closable="false" show-icon>
+      <template #title>上次同步</template>
+      <div>状态：{{ status.lastStatus || '—' }}；时间：{{ status.lastSyncTime || '—' }}{{ status.running ? '（进行中…）' : '' }}</div>
+    </el-alert>
+  </el-card>
+
+  <el-card shadow="never" style="margin-top: 16px">
     <template #header>
       <div class="hd">
         <span>LDAP 同步</span>
@@ -63,12 +111,18 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { Search, FolderOpened, User } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { previewSync, applySync } from '@/api/ldap'
+import { getLdapConfig, updateLdapConfig, triggerFullSync, getSyncStatus } from '@/api/config'
 
 const loading = ref(false)
 const applying = ref(false)
+const saving = ref(false)
+const syncingFull = ref(false)
 const previewTree = ref([])
 const flat = ref([])
 const selected = reactive({})
+const cfg = reactive({ syncEnabled: true, syncTimesList: [], url: '', baseDn: '', username: '', password: '' })
+const treesText = ref('')
+const status = ref(null)
 
 function keyOf(n) {
   return n.type + ':' + (n.dn || n.account)
@@ -237,7 +291,69 @@ async function applySelected() {
   }
 }
 
-onMounted(openCompare)
+onMounted(() => { openCompare(); loadConfig(); loadStatus() })
+
+async function loadConfig() {
+  try {
+    const res = await getLdapConfig()
+    const d = res.data || {}
+    cfg.url = d.url || ''
+    cfg.baseDn = d.base || ''
+    cfg.username = d.username || ''
+    cfg.password = ''
+    cfg.syncEnabled = d.syncEnabled !== false
+    cfg.syncTimesList = (d.syncTimes ? String(d.syncTimes).split(',') : []).map((s) => s.trim()).filter(Boolean)
+    treesText.value = (d.trees || []).join('\n')
+  } catch (e) {}
+}
+
+async function loadStatus() {
+  try {
+    const res = await getSyncStatus()
+    status.value = res.data || null
+  } catch (e) {}
+}
+
+function addTime() {
+  cfg.syncTimesList.push('')
+}
+function removeTime(i) {
+  cfg.syncTimesList.splice(i, 1)
+}
+
+async function saveConfig() {
+  saving.value = true
+  try {
+    const payload = {
+      url: cfg.url,
+      baseDn: cfg.baseDn,
+      username: cfg.username,
+      password: cfg.password || '',
+      trees: treesText.value.split('\n').map((s) => s.trim()).filter(Boolean),
+      syncTimes: cfg.syncTimesList.filter(Boolean).join(','),
+      syncEnabled: cfg.syncEnabled
+    }
+    const res = await updateLdapConfig(payload)
+    ElMessage.success(res.data || '配置保存成功')
+    await loadConfig()
+    await loadStatus()
+  } catch (e) {} finally {
+    saving.value = false
+  }
+}
+
+async function doFullSync() {
+  syncingFull.value = true
+  try {
+    const res = await triggerFullSync()
+    const data = res.data || {}
+    ElMessage.success(data.message || '已触发全量同步')
+    await loadStatus()
+    await openCompare()
+  } catch (e) {} finally {
+    syncingFull.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -266,4 +382,9 @@ onMounted(openCompare)
 .change-item .arrow { color: #909399; margin: 0 2px; }
 .footer { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
 .footer .summary { color: #606266; font-size: 13px; margin-right: auto; }
+.settings { margin-bottom: 16px; }
+.cfg-form { max-width: 760px; }
+.time-rows { display: flex; flex-direction: column; gap: 8px; }
+.time-row { display: flex; align-items: center; gap: 8px; }
+.hint { color: #909399; font-size: 12px; line-height: 1.6; margin-top: 4px; }
 </style>

@@ -23,6 +23,7 @@ import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,6 +38,8 @@ public class LdapService {
      * value = 该根节点下的整棵部门/用户树及过期时间
      */
     private final ConcurrentHashMap<String, CacheEntry> deptNodeCache = new ConcurrentHashMap<>();
+    /** 缓存重建锁：避免缓存过期时多线程并发全量查 LDAP（惊群） */
+    private final Object cacheLock = new Object();
     @Autowired
     private LdapTemplate ldapTemplate;
     @Autowired
@@ -100,8 +103,9 @@ public class LdapService {
             return fallbackContext;
 
         } catch (org.springframework.dao.EmptyResultDataAccessException e) {
-            // 账号在 LDAP 中不存在（如本地外部用户），属正常分支，回退本地认证，不刷 ERROR 堆栈
-            log.debug("LDAP 未找到账号 {}，将回退本地用户认证", account);
+            // 按当前"按 source 路由"模型：LDAP 查无此账号即认证失败，返回 null 交由上层
+            // （AccountService）按来源分流处理，不再"回退本地认证"。
+            log.debug("LDAP 未找到账号 {}，认证失败返回 null", account);
             return null;
         } catch (Exception e) {
             log.error("LDAP 认证异常: {}, 原因: {}", account, e.getMessage(), e);
@@ -145,53 +149,82 @@ public class LdapService {
     }
 
     private List<LdapTreeNode> getLdapTreeNodes() {
-        // 根节点集合：baseDn + 配置的子树（subTrees），均按来源=LDAP 分组缓存
+        // 根节点集合：仅配置的 subTree（subTrees）；未配置 subTree 则组织树不展示任何根
         List<String> roots = new ArrayList<>();
-        roots.add(configService.getLdapBase().toLowerCase());
         List<String> subTrees = configService.getLdapTrees();
-        if (subTrees != null) {
-            for (String s : subTrees) roots.add(s.toLowerCase());
+        if (subTrees == null || subTrees.isEmpty()) {
+            log.info("未配置 subTree，组织树不展示任何根");
+            return List.of();
+        }
+        for (String s : subTrees) {
+            roots.add(s.toLowerCase());
         }
 
-        // 1. 优先从本地内存缓存按根分组查询（全部命中且未过期才走缓存）
-        List<LdapTreeNode> cached = new ArrayList<>();
-        boolean allHit = true;
-        for (String root : roots) {
-            CacheEntry entry = deptNodeCache.get("LDAP:" + root);
-            if (entry == null || entry.isExpired()) {
-                allHit = false;
-                break;
+        // 1. 无锁快速读缓存（全部命中且未过期才走缓存）
+        if (cacheAllHit(roots)) {
+            List<LdapTreeNode> cached = new ArrayList<>();
+            for (String root : roots) {
+                CacheEntry entry = deptNodeCache.get("LDAP:" + root);
+                if (entry != null) cached.addAll(entry.getNodes());
             }
-            cached.addAll(entry.getNodes());
-        }
-        if (allHit) {
             log.info("从本地内存缓存获取 LDAP 树（按来源+根分组），根数量: {}", roots.size());
             return cached;
         }
 
-        // 2. 缓存未全部命中/已过期，访问 LDAP 查询
-        log.info("本地缓存未全部命中或已过期，开始查询 LDAP 树形结构, base: {}", configService.getLdapBase());
+        // 2. 缓存未全部命中/已过期：加锁由单线程重建，避免多线程并发全量查 LDAP（惊群）
+        synchronized (cacheLock) {
+            // 获得锁后二次检查，其他线程可能已重建
+            if (cacheAllHit(roots)) {
+                List<LdapTreeNode> cached = new ArrayList<>();
+                for (String root : roots) {
+                    CacheEntry entry = deptNodeCache.get("LDAP:" + root);
+                    if (entry != null) cached.addAll(entry.getNodes());
+                }
+                return cached;
+            }
 
-        // 从LDAP查询平铺的节点列表
-        List<LdapTreeNode> allEntries = getLdapEntriesFromLdap();
-        log.info("从LDAP查询到节点数量: {}", allEntries.size());
+            log.info("本地缓存未全部命中或已过期，开始查询 LDAP 树形结构, base: {}", configService.getLdapBase());
 
-        // 构建树形结构（buildTree 已按子树范围裁剪，返回各根节点）
-        List<LdapTreeNode> tree = buildTree(allEntries);
-        log.info("构建后的树根节点数量: {}", tree.size());
+            // 清理已过期条目，避免陈旧条目长期驻留（此前仅 forceRefresh 才会全清）
+            for (String root : roots) {
+                CacheEntry e = deptNodeCache.get("LDAP:" + root);
+                if (e != null && e.isExpired()) {
+                    deptNodeCache.remove("LDAP:" + root);
+                }
+            }
 
-        // 3. 将构建好的树按根拆分存入本地内存缓存（从数据库读取过期时间）
-        long ttlMillis = configService.getCacheExpireMinutes() * 60 * 1000L; // 转换为毫秒
-        for (LdapTreeNode rootNode : tree) {
-            String key = "LDAP:" + rootNode.getDn().toLowerCase();
-            List<LdapTreeNode> single = new ArrayList<>();
-            single.add(rootNode);
-            deptNodeCache.put(key, new CacheEntry(single, ttlMillis));
-            log.info("LDAP 树形结构已缓存到本地内存, key: {}, 过期时间: {}分钟",
-                    key, configService.getCacheExpireMinutes());
+            // 从LDAP查询平铺的节点列表（按 subTree 逐根拉取）
+            List<LdapTreeNode> allEntries = getAllLdapEntries();
+            log.info("从LDAP查询到节点数量: {}", allEntries.size());
+
+            // 构建树形结构（buildTree 已按子树范围裁剪，返回各根节点）
+            List<LdapTreeNode> tree = buildTree(allEntries);
+            log.info("构建后的树根节点数量: {}", tree.size());
+
+            // 3. 将构建好的树按根拆分存入本地内存缓存（从配置读取过期时间）
+            long ttlMillis = configService.getCacheExpireMinutes() * 60 * 1000L;
+            for (LdapTreeNode rootNode : tree) {
+                String key = "LDAP:" + rootNode.getDn().toLowerCase();
+                List<LdapTreeNode> single = new ArrayList<>();
+                single.add(rootNode);
+                deptNodeCache.put(key, new CacheEntry(single, ttlMillis));
+                log.info("LDAP 树形结构已缓存到本地内存, key: {}, 过期时间: {}分钟",
+                        key, configService.getCacheExpireMinutes());
+            }
+
+            return tree;
         }
+    }
 
-        return tree;
+    /** 所有根节点均命中且未过期 */
+    private boolean cacheAllHit(List<String> roots) {
+        for (String root : roots) {
+            CacheEntry entry = deptNodeCache.get("LDAP:" + root);
+            if (entry == null || entry.isExpired()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -408,22 +441,21 @@ public class LdapService {
     }
 
     /**
-     * 从 LDAP 查询平铺的节点列表(无树形关系)
+     * 从 LDAP 按指定根（subTree 根或 baseDn）查询平铺的节点列表(无树形关系)
      *
+     * @param base 搜索根 DN（一次 SUBTREE 搜索）
      * @return 平铺的节点列表
      */
-    private List<LdapTreeNode> getLdapEntriesFromLdap() {
-        String cacheKey = configService.getLdapBase();
-
+    private List<LdapTreeNode> fetchFromLdap(String base) {
         // 使用 AndFilter 和 HardcodedFilter 来查询所有条目，但排除组对象
         // 过滤条件：objectClass=person 或 objectClass=organizationalUnit，排除 group/groupOfNames
         AndFilter filter = new AndFilter();
         filter.and(new HardcodedFilter("(|(objectClass=person)(objectClass=organizationalUnit))"));
 
-        // 查询该目录下的所有数据
+        // 查询该根下的所有数据
         return ldapTemplate.search(
                 LdapQueryBuilder.query()
-                        .base(cacheKey)
+                        .base(base)
                         .searchScope(SearchScope.SUBTREE)
                         .filter(filter.encode()),
                 (ContextMapper<LdapTreeNode>) ctx -> {
@@ -488,10 +520,50 @@ public class LdapService {
     }
 
     /**
-     * 暴露全量 LDAP 条目（person + organizationalUnit），供 LdapSyncService 同步使用
+     * 暴露全量 LDAP 条目（person + organizationalUnit），供 LdapSyncService 预览/apply 使用。
+     * 按配置的 subTree 列表逐根拉取并合并去重；未配置 subTree 时返回空（不展示/不同步）。
      */
     public List<LdapTreeNode> getAllLdapEntries() {
-        return getLdapEntriesFromLdap();
+        List<String> roots = configService.getLdapTrees();
+        if (roots == null || roots.isEmpty()) {
+            return List.of();
+        }
+        List<LdapTreeNode> all = new ArrayList<>();
+        for (String root : roots) {
+            all.addAll(fetchFromLdap(root));
+        }
+        return dedupe(all);
+    }
+
+    /**
+     * 按 subTree 根分组拉取，供定时全量同步使用。
+     * - 任一已配置根连接异常会向上抛出（由调用方判定跳过整轮）。
+     * - 已配置根连接正常但返回 0 条时打 warning（可能 DN 写错或该分支已从 LDAP 删除）。
+     */
+    public Map<String, List<LdapTreeNode>> getAllLdapEntriesByRoot() {
+        Map<String, List<LdapTreeNode>> byRoot = new HashMap<>();
+        List<String> roots = configService.getLdapTrees();
+        if (roots == null || roots.isEmpty()) {
+            return byRoot;
+        }
+        for (String root : roots) {
+            List<LdapTreeNode> entries = fetchFromLdap(root);
+            byRoot.put(root, entries);
+            if (entries.isEmpty()) {
+                log.warn("[LDAP-SYNC] 已配置 subTree 根 {} 连接正常但返回 0 条节点（可能 DN 写错或该分支已从 LDAP 删除）", root);
+            }
+        }
+        return byRoot;
+    }
+
+    private List<LdapTreeNode> dedupe(List<LdapTreeNode> list) {
+        Map<String, LdapTreeNode> byDn = new LinkedHashMap<>();
+        for (LdapTreeNode n : list) {
+            if (n.getDn() != null) {
+                byDn.putIfAbsent(n.getDn().toLowerCase(), n);
+            }
+        }
+        return new ArrayList<>(byDn.values());
     }
 
     /**

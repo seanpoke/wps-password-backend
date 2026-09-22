@@ -20,6 +20,7 @@ import com.docauth.util.EccUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
@@ -60,6 +61,9 @@ public class DocService {
     @Autowired
     private SysUserRepository sysUserRepository;
 
+    @Autowired
+    private OrgTreeCacheService orgTreeCacheService;
+
     /**
      * 获取文档所有者信息
      *
@@ -68,6 +72,7 @@ public class DocService {
      * @return 文档所有者响应对象
      * @throws RuntimeException 业务异常时抛出
      */
+    @Transactional
     public DocOwnerResponse getDocOwner(String docId, String fileName) {
         log.info("[getDocOwner] 开始处理，docId: {}, fileName: {}", docId, fileName);
 
@@ -86,16 +91,24 @@ public class DocService {
             String name = UserContextHolder.getCurrentName();
 
             // 创建新的DocInfo记录（不再存储公私钥）
-            docInfo = new DocInfo();
-            docInfo.setUid(docId);
-            docInfo.setAccount(account);
-            docInfo.setName(name != null ? name : account);
-            docInfo.setFileName(fileName);
-            docInfo.setCreateBy(account);
-            docInfoRepository.save(docInfo);
+            DocInfo newDoc = new DocInfo();
+            newDoc.setUid(docId);
+            newDoc.setAccount(account);
+            newDoc.setName(name != null ? name : account);
+            newDoc.setFileName(fileName);
+            newDoc.setCreateBy(account);
+            try {
+                docInfo = docInfoRepository.save(newDoc);
+            } catch (DataIntegrityViolationException ex) {
+                // 并发首访导致 uid 唯一冲突（doc_info.uid 已加唯一索引）：复用已存在记录
+                docInfo = docInfoRepository.findByUid(docId);
+                if (docInfo == null) {
+                    throw ex;
+                }
+                log.warn("[getDocOwner] 并发创建冲突，复用已存在记录，docId: {}", docId);
+            }
 
             log.info("[getDocOwner] 创建新文档记录，docId: {}, owner: {}, fileName: {}", docId, account, fileName);
-
 
         } else if (fileName != null && !fileName.isEmpty() && docInfo.getFileName() == null) {
             // 如果文档已存在但fileName为空，则更新fileName
@@ -284,10 +297,20 @@ public class DocService {
             throw new RuntimeException("未授权：用户未登录");
         }
 
-        // 按当前用户的可见范围过滤组织树（id 化，树由 sys_dept/sys_user 行构建）
+        // 按当前用户的可见范围过滤组织树（id 化）；结构取自缓存的权限树，hasAuth 每请求现算
         ScopeService.UserScope scope = scopeService.computeScope(uc.getAccount(), uc.getSource());
         Map<String, LdapNodeDTO> byKey = new HashMap<>();
-        List<LdapNodeDTO> roots = buildTree(docId, byKey);
+        Set<String> authKeys = new HashSet<>();
+        List<DocShareRel> rels = docId != null ? docShareRelRepository.findByUid(docId) : null;
+        if (rels != null) {
+            for (DocShareRel r : rels) {
+                if (r.getInvalid() != null && r.getInvalid() == 1) {
+                    continue; // 失效授权忽略
+                }
+                authKeys.add(r.getType() + ":" + r.getTargetId());
+            }
+        }
+        List<LdapNodeDTO> roots = copyTree(orgTreeCacheService.getPermissionTree(), byKey, authKeys);
         if (scope.isFull()) {
             return roots;
         }
@@ -390,14 +413,14 @@ public class DocService {
      *
      * @param docId                文档ID
      * @param path                 文件路径
-     * @param keyVersion           密钥版本号（保留但不使用）
+     * @param keyVersion           密钥版本号（记录到审计日志）
      * @param beforePassword       修改前密码（加密字符串，不解密）
      * @param afterPassword        修改后密码（加密字符串，不解密）
      * @param possiblePasswordList 可能的密码集合（加密字符串列表，不解密不排序）
      * @param platform             操作来源平台
      */
-    public void saveLog(String docId, String path, String keyVersion, String beforePassword,
-                        String afterPassword, List<String> possiblePasswordList, String platform) {
+    public void saveLog(String docId, String path, String beforePassword,
+                        String afterPassword, List<String> possiblePasswordList, String platform, String keyVersion) {
         // 从Token中获取当前登录用户信息（在主线程中捕获）
         String currentAccount = UserContextHolder.getCurrentAccount();
         if (currentAccount == null || currentAccount.isEmpty()) {
@@ -413,8 +436,9 @@ public class DocService {
             message.setAfterPassword(afterPassword);
             message.setPossiblePasswordList(possiblePasswordList);
             message.setPlatform(platform);
+            message.setKeyVersion(keyVersion);
             message.setCreateBy(currentAccount);
-            message.setKeyVersion(keyVersion);  // 设置密钥版本号
+
             // 将消息通过logback异步记录（绝对非阻塞）
             passwordLogWriterService.offerLog(message);
         } catch (Exception e) {
@@ -425,78 +449,45 @@ public class DocService {
 
 
     /**
-     * 构建部门/用户树（LDAP+本地统一为 sys_dept/sys_user 行），按 docId 打 hasAuth 标（id 化）
-     * byKey 暴露 "type:id" -> 节点 映射，便于按 scope 的部门 id 截取子树
+     * 从缓存的权限树深拷贝出一份全新节点（严禁修改缓存里的共享节点，避免并发串味），
+     * 并按授权集合打 hasAuth 标；byKey 暴露 "type:id" -> 新节点 映射，供 scope 截取子树。
      */
-    private List<LdapNodeDTO> buildTree(String docId, Map<String, LdapNodeDTO> byKey) {
-        List<SysDept> depts = sysDeptRepository.findAll();
-        List<DocShareRel> rels = docId != null ? docShareRelRepository.findByUid(docId) : null;
-
-        Map<Long, LdapNodeDTO> deptNodes = new HashMap<>();
-        for (SysDept d : depts) {
-            LdapNodeDTO n = new LdapNodeDTO();
-            n.setId(d.getId());
-            n.setType(0);
-            n.setName(d.getName());
-            n.setAccount(null);
-            n.setHasAuth(false);
-            deptNodes.put(d.getId(), n);
-            byKey.put("0:" + d.getId(), n);
+    private List<LdapNodeDTO> copyTree(List<LdapNodeDTO> src, Map<String, LdapNodeDTO> byKey, Set<String> authKeys) {
+        List<LdapNodeDTO> out = new ArrayList<>();
+        for (LdapNodeDTO s : src) {
+            out.add(copyNode(s, byKey, authKeys));
         }
-
-        List<LdapNodeDTO> roots = new ArrayList<>();
-        for (SysDept d : depts) {
-            LdapNodeDTO n = deptNodes.get(d.getId());
-            if (d.getParentId() != null && deptNodes.containsKey(d.getParentId())) {
-                addLocalChild(deptNodes.get(d.getParentId()), n);
-            } else {
-                roots.add(n);
-            }
-        }
-
-        for (SysUser u : sysUserRepository.findAll()) {
-            if (u.getDeptId() == null) {
-                continue;
-            }
-            LdapNodeDTO p = deptNodes.get(u.getDeptId());
-            if (p == null) {
-                continue;
-            }
-            LdapNodeDTO un = new LdapNodeDTO();
-            un.setId(u.getId());
-            un.setType(1);
-            un.setName(u.getName());
-            un.setAccount(u.getAccount());
-            un.setHasAuth(false);
-            addLocalEmploy(p, un);
-            byKey.put("1:" + u.getId(), un);
-        }
-
-        if (rels != null) {
-            for (DocShareRel r : rels) {
-                if (r.getInvalid() != null && r.getInvalid() == 1) {
-                    continue; // 失效授权忽略
-                }
-                LdapNodeDTO node = byKey.get(r.getType() + ":" + r.getTargetId());
-                if (node != null) {
-                    node.setHasAuth(true);
-                }
-            }
-        }
-        return roots;
+        return out;
     }
 
-    private void addLocalChild(LdapNodeDTO parent, LdapNodeDTO child) {
-        if (parent.getDeptList() == null) {
-            parent.setDeptList(new ArrayList<>());
+    private LdapNodeDTO copyNode(LdapNodeDTO s, Map<String, LdapNodeDTO> byKey, Set<String> authKeys) {
+        LdapNodeDTO n = new LdapNodeDTO();
+        n.setId(s.getId());
+        n.setType(s.getType());
+        n.setName(s.getName());
+        n.setAccount(s.getAccount());
+        String key = s.getType() + ":" + s.getId();
+        n.setHasAuth(authKeys.contains(key));
+        byKey.put(key, n);
+        if (s.getDeptList() != null) {
+            List<LdapNodeDTO> dl = new ArrayList<>();
+            for (LdapNodeDTO c : s.getDeptList()) {
+                dl.add(copyNode(c, byKey, authKeys));
+            }
+            n.setDeptList(dl);
         }
-        parent.getDeptList().add(child);
+        if (s.getEmployList() != null) {
+            List<LdapNodeDTO> el = new ArrayList<>();
+            for (LdapNodeDTO c : s.getEmployList()) {
+                el.add(copyNode(c, byKey, authKeys));
+            }
+            n.setEmployList(el);
+        }
+        return n;
     }
 
-    private void addLocalEmploy(LdapNodeDTO parent, LdapNodeDTO child) {
-        if (parent.getEmployList() == null) {
-            parent.setEmployList(new ArrayList<>());
-        }
-        parent.getEmployList().add(child);
+    /** 主动刷新组织树缓存（DB-only） */
+    public void refreshOrgTree() {
+        orgTreeCacheService.forceRefresh();
     }
 }

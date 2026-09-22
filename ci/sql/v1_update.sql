@@ -125,6 +125,11 @@ SET @exist_doc_idx := (SELECT COUNT(*) FROM information_schema.STATISTICS WHERE 
 SET @sql_doc_idx := IF(@exist_doc_idx=0, 'ALTER TABLE doc_info ADD KEY idx_doc_info_create_time (create_time)', 'SELECT 1');
 PREPARE stmt_doc_idx FROM @sql_doc_idx; EXECUTE stmt_doc_idx; DEALLOCATE PREPARE stmt_doc_idx;
 
+/* ===================== 6. doc_info.uid 唯一约束（防并发首访重复建文档） ===================== */
+SET @exist_uid := (SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='doc_info' AND INDEX_NAME='uk_doc_info_uid');
+SET @sql_uid := IF(@exist_uid=0, 'ALTER TABLE doc_info ADD UNIQUE KEY uk_doc_info_uid (uid)', 'SELECT 1');
+PREPARE stmt_uid FROM @sql_uid; EXECUTE stmt_uid; DEALLOCATE PREPARE stmt_uid;
+
 /* ===================== 5. admin 角色可见部门 = 全部 ===================== */
 SET @admin_id = (SELECT id FROM sys_role WHERE code='admin');
 DELETE FROM visible_dept_rel
@@ -162,3 +167,14 @@ WHERE u.source = 'LDAP'
 
 -- 6.3 LDAP 用户 password_hash 置空（若非 NULL）
 UPDATE sys_user SET password_hash = NULL WHERE source = 'LDAP' AND password_hash IS NOT NULL;
+
+/* ===================== 7. LDAP 定时全量同步配置种子（幂等） =====================
+   7.1 syncTimes：定时触发时刻（逗号分隔，如 10:00,20:00），页面用时间选择器编辑，不暴露 cron。
+   7.2 syncEnabled：定时同步总开关（true/false，默认 true）。 */
+INSERT INTO doc_config (type, `key`, value)
+SELECT 'ldap-config', 'syncTimes', '10:00,20:00'
+WHERE NOT EXISTS (SELECT 1 FROM doc_config WHERE type = 'ldap-config' AND `key` = 'syncTimes');
+
+INSERT INTO doc_config (type, `key`, value)
+SELECT 'ldap-config', 'syncEnabled', 'true'
+WHERE NOT EXISTS (SELECT 1 FROM doc_config WHERE type = 'ldap-config' AND `key` = 'syncEnabled');

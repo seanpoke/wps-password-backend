@@ -5,6 +5,7 @@
         <span>部门管理</span>
         <div>
           <el-input v-model="kw" placeholder="搜索部门名" style="width:180px" :prefix-icon="Search" clearable @clear="load" @keyup.enter="load" />
+          <el-button :icon="Refresh" :loading="refreshing" @click="onRefreshCache" title="按当前数据库重建组织树/权限树缓存（不连 LDAP），客户端将拉取最新结构">刷新缓存</el-button>
           <el-button v-if="activeTab === 'LOCAL'" type="primary" :icon="Plus" @click="openAdd">新建部门</el-button>
         </div>
       </div>
@@ -79,12 +80,14 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { Search, Plus, Edit, Delete, Folder, View } from '@element-plus/icons-vue'
+import { Search, Plus, Edit, Delete, Folder, View, Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listDepts, createDept, updateDept, deleteDept, listDeptRefs } from '@/api/dept'
 import { ldapTree } from '@/api/ldap'
+import { refreshOrgTree } from '@/api/doc'
 
 const loading = ref(false)
+const refreshing = ref(false)
 const list = ref([])
 const kw = ref('')
 const activeTab = ref('LOCAL')
@@ -252,6 +255,19 @@ async function remove(row) {
   await load()
 }
 
+/** 主动刷新组织树缓存（DB-only，不连 LDAP）：供管理员点击「刷新缓存」，
+ *  重建后客户端（安卓等）拉取 /doc/auth/tree 即获最新结构。 */
+async function onRefreshCache() {
+  refreshing.value = true
+  try {
+    await refreshOrgTree()
+    ElMessage.success('组织树缓存已刷新，客户端将拉取最新结构')
+    await load()
+  } finally {
+    refreshing.value = false
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -267,16 +283,4 @@ onMounted(load)
 .name { font-size: 14px; color: #303133; flex-shrink: 0; }
 .ops { flex-shrink: 0; margin-left: 72px; visibility: hidden; }
 :deep(.el-tree-node__content:hover) .ops { visibility: visible; }
-.cmp { height: 100%; display: flex; flex-direction: column; }
-.cmp-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
-.cmp-bar .spacer { flex: 1; }
-.tag-btn { cursor: pointer; user-select: none; }
-.cmp-list { flex: 1; overflow: auto; border: 1px solid #ebeef5; border-radius: 4px; }
-.cmp-row { display: flex; align-items: center; gap: 6px; padding: 4px 8px; flex: 1; min-width: 0; }
-.cmp-row.gone { background: #fef0f0; }
-.cmp-row .fd { flex-shrink: 0; color: #e6a23c; }
-.cmp-row .nm { font-weight: 500; flex-shrink: 0; }
-.cmp-row .acc { color: #909399; font-size: 12px; }
-.cmp-row .st { margin-left: 4px; flex-shrink: 0; }
-.cmp-row .dn { color: #c0c4cc; font-size: 12px; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>

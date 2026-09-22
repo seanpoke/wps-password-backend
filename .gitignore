@@ -74,5 +74,8 @@ webroot/verify.html
 # 编译产物兜底
 *.class
 
+# 部署目录整体忽略（含脚本/镜像/构建产物，不入库）
+deploy/
+
 # 会话/私有记忆（CodeBuddy 工作记忆，非项目源码）
 .codebuddy/

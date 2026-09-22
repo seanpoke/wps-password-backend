@@ -22,8 +22,8 @@ import java.util.Set;
 
 /**
  * 可见范围（Data Scope）服务（id 化：范围统一用 sys_dept.id，不再依赖 DN）
- * 用户可见范围 = 默认当前部门及子节点 + 角色关联的权限组部门 + 用户关联的权限组部门
- * （多角色取并集；admin 角色全量）
+ * 用户可见范围 = 角色绑定的可见部门 ∪ 用户绑定的可见部门
+ * （多角色取并集；admin 全量；自身部门不再默认可见，纯显式 RBAC）
  */
 @Slf4j
 @Service
@@ -73,11 +73,6 @@ public class ScopeService {
         if (isAdmin) {
             scope.full = true;
             return scope;
-        }
-
-        // 基础范围：当前部门（含子树，由树渲染展开）
-        if (u != null && u.getDeptId() != null) {
-            addRoot(scope, u.getDeptId());
         }
 
         // user directly bound visible depts（deptId=0 表示“全部”，直接全量）
