@@ -62,7 +62,7 @@ public class OrgTreeCacheService {
         rebuild();
     }
 
-    @Scheduled(fixedDelay = 15, timeUnit = TimeUnit.MINUTES)
+    @Scheduled(fixedDelay = 15, initialDelay = 15, timeUnit = TimeUnit.MINUTES)
     public void scheduledRefresh() {
         rebuild();
     }
