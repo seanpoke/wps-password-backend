@@ -1,9 +1,6 @@
 package com.docauth.service;
 
 import com.docauth.context.UserContext;
-import com.docauth.dto.LdapNodeDTO;
-import com.docauth.entity.DocShareRel;
-import com.docauth.repository.DocShareRelRepository;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,68 +13,24 @@ import org.springframework.ldap.filter.HardcodedFilter;
 import org.springframework.ldap.query.LdapQueryBuilder;
 import org.springframework.ldap.query.SearchScope;
 import org.springframework.stereotype.Service;
-import org.springframework.util.CollectionUtils;
 
 import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Service
 public class LdapService {
 
-    /**
-     * 本地内存缓存: key=baseDn, value=缓存数据(包含节点列表和过期时间)
-     */
-    private final ConcurrentHashMap<String, CacheEntry> ldapCache = new ConcurrentHashMap<>();
     @Autowired
     private LdapTemplate ldapTemplate;
     @Autowired
-    private DocShareRelRepository docShareRelRepository;
-    @Autowired
     private ConfigService configService;
-
-    /**
-     * 查询用户的 LDAP DN
-     *
-     * @param account 用户名（sAMAccountName）
-     * @return 用户的完整 DN，如果未找到则返回 null
-     */
-    public String getUserDn(String account) {
-        try {
-            log.info("查询用户 {} 的 LDAP DN", account);
-
-            // 使用 sAMAccountName 查询用户 DN
-            var query = LdapQueryBuilder.query()
-                    .base(configService.getLdapBase())
-                    .where("sAMAccountName").is(account);
-
-            List<String> dns = ldapTemplate.search(
-                    query,
-                    (AttributesMapper<String>) attrs -> {
-                        Attribute dnAttr = attrs.get("distinguishedName");
-                        return dnAttr != null ? dnAttr.get().toString() : null;
-                    }
-            );
-
-            if (dns != null && !dns.isEmpty()) {
-                String userDn = dns.get(0);
-                log.info("找到用户 {} 的 DN: {}", account, userDn);
-                return userDn;
-            }
-
-            log.warn("未找到用户 {} 的 DN", account);
-            return null;
-        } catch (Exception e) {
-            log.error("查询用户 {} 的 DN 失败: {}", account, e.getMessage(), e);
-            return null;
-        }
-    }
 
     /**
      * 验证用户身份并返回用户上下文
@@ -134,314 +87,51 @@ public class LdapService {
             fallbackContext.setName(account);
             return fallbackContext;
 
+        } catch (org.springframework.dao.EmptyResultDataAccessException e) {
+            // 按当前"按 source 路由"模型：LDAP 查无此账号即认证失败，返回 null 交由上层
+            // （AccountService）按来源分流处理，不再"回退本地认证"。
+            log.debug("LDAP 未找到账号 {}，认证失败返回 null", account);
+            return null;
         } catch (Exception e) {
             log.error("LDAP 认证异常: {}, 原因: {}", account, e.getMessage(), e);
             return null;
         }
     }
 
-    /**
-     * 查询 LDAP 树形结构并标记权限
-     *
-     * @param docId 文档ID，如果为空则不标记权限
-     * @return LDAP 树形结构列表
-     */
-    public List<LdapNodeDTO> getLdapTreeWithAuth(String docId) {
-        // 如果提供了docId，先查询该文档的所有授权记录（只查一次数据库）
-        List<DocShareRel> shareRels = null;
-        if (docId != null) {
-            shareRels = docShareRelRepository.findByUid(docId);
-            log.info("查询到文档 {} 的授权记录数量: {}", docId, shareRels != null ? shareRels.size() : 0);
-        }
 
-        // 调试日志：打印配置的子树
-        log.info("配置的 baseDn: {}", configService.getLdapBase());
-        log.info("配置的 subTrees: {}", configService.getLdapTrees());
 
-        // 获取 LDAP 树形结构(从缓存或LDAP查询)
-        List<LdapTreeNode> tree = getLdapTreeNodes();
-        log.info("获取到 LDAP 树根节点数量: {}", tree.size());
 
-        // 转换为精简的 DTO
-        List<LdapNodeDTO> result = new ArrayList<>();
-        for (LdapTreeNode node : tree) {
-            LdapNodeDTO dto = toDTO(node);
-            // 递归标记权限
-            if (!CollectionUtils.isEmpty(shareRels)) {
-                markAuthStatus(dto, shareRels);
-            }
-            result.add(dto);
-        }
-        return result;
-    }
 
-    private List<LdapTreeNode> getLdapTreeNodes() {
-        String cacheKey = configService.getLdapBase();
 
-        // 1. 优先从本地内存缓存中查询
-        CacheEntry cacheEntry = ldapCache.get(cacheKey);
-        if (cacheEntry != null && !cacheEntry.isExpired()) {
-            log.info("从本地内存缓存中获取 LDAP 树形结构, key: {}, 根节点数量: {}", cacheKey, cacheEntry.getNodes().size());
-            return cacheEntry.getNodes();
-        }
 
-        // 2. 缓存未命中或已过期，访问 LDAP 查询
-        if (cacheEntry != null && cacheEntry.isExpired()) {
-            log.info("本地缓存已过期，开始重新查询 LDAP 树形结构, base: {}", cacheKey);
-        } else {
-            log.info("本地缓存未命中，开始查询 LDAP 树形结构, base: {}", cacheKey);
-        }
 
-        // 从LDAP查询平铺的节点列表
-        List<LdapTreeNode> allEntries = getLdapEntriesFromLdap();
-        log.info("从LDAP查询到节点数量: {}", allEntries.size());
 
-        // 构建树形结构
-        List<LdapTreeNode> tree = buildTree(allEntries);
-        log.info("构建后的树根节点数量: {}", tree.size());
 
-        // 3. 将构建好的树形结构存入本地内存缓存（从数据库读取过期时间）
-        if (tree != null && !tree.isEmpty()) {
-            long ttlMillis = configService.getCacheExpireMinutes() * 60 * 1000L; // 转换为毫秒
-            CacheEntry newEntry = new CacheEntry(tree, ttlMillis);
-            ldapCache.put(cacheKey, newEntry);
-            log.info("LDAP 树形结构已缓存到本地内存, key: {}, 根节点数量: {}, 过期时间: {}分钟",
-                    cacheKey, tree.size(), configService.getCacheExpireMinutes());
-        }
 
-        return tree;
-    }
+
+
+
+
+
+
+
 
     /**
-     * 递归标记节点的权限状态
-     * hasAuth 仅表示该节点本身在数据库中存在授权记录，不从父节点继承权限
+     * 从 LDAP 按指定根（subTree 根或 baseDn）查询平铺的节点列表(无树形关系)
      *
-     * @param node      节点
-     * @param shareRels 授权记录列表（已预先查询）
-     */
-    private void markAuthStatus(LdapNodeDTO node, List<DocShareRel> shareRels) {
-        // 判断当前节点是否有权限（仅检查服务端数据中是否存在精确匹配）
-        boolean hasAuth = false;
-        if (shareRels != null && !shareRels.isEmpty()) {
-            for (DocShareRel rel : shareRels) {
-                // 如果是部门类型(type=0)，且节点的DN与授权的DN完全匹配
-                if (rel.getType() == 0 && node.getType() == 0) { // 0表示部门
-                    if (node.getDn() != null && node.getDn().equalsIgnoreCase(rel.getDn())) {
-                        hasAuth = true;
-                        break;
-                    }
-                }
-                // 如果是用户类型(type=1)，且节点的DN与授权的DN完全匹配
-                else if (rel.getType() == 1 && node.getType() == 1) { // 1表示用户
-                    if (node.getDn() != null && node.getDn().equalsIgnoreCase(rel.getDn())) {
-                        hasAuth = true;
-                        break;
-                    }
-                }
-            }
-        }
-
-        node.setHasAuth(hasAuth);
-
-        // 递归处理子部门
-        if (node.getDeptList() != null) {
-            for (LdapNodeDTO child : node.getDeptList()) {
-                markAuthStatus(child, shareRels);
-            }
-        }
-
-        // 递归处理子员工
-        if (node.getEmployList() != null) {
-            for (LdapNodeDTO child : node.getEmployList()) {
-                markAuthStatus(child, shareRels);
-            }
-        }
-    }
-
-    /**
-     * 转换单个节点为 DTO
-     *
-     * @param node 完整节点
-     * @return 精简 DTO
-     */
-    private LdapNodeDTO toDTO(LdapTreeNode node) {
-        LdapNodeDTO dto = new LdapNodeDTO();
-        dto.setDn(node.getDn());
-
-        // 从 attributes 中获取 name
-        String name = (String) node.getAttributes().get("name");
-        dto.setName(name != null ? name : node.getName());
-
-        // 从 attributes 中获取 sAMAccountName
-        String sAMAccountName = (String) node.getAttributes().get("sAMAccountName");
-
-        // 根据 sAMAccountName 判断类型
-        if (sAMAccountName != null && !sAMAccountName.isEmpty()) {
-            dto.setType(1); // 用户
-            dto.setAccount(sAMAccountName);
-        } else {
-            dto.setType(0); // 部门
-            dto.setAccount(null);
-        }
-
-        // 初始化 hasAuth 为 false
-        dto.setHasAuth(false);
-
-        // 递归转换子节点并按类型分类
-        if (node.getChildren() != null && !node.getChildren().isEmpty()) {
-            List<LdapNodeDTO> deptList = new ArrayList<>();
-            List<LdapNodeDTO> employList = new ArrayList<>();
-
-            for (LdapTreeNode child : node.getChildren()) {
-                LdapNodeDTO childDTO = toDTO(child);
-                // 根据子节点类型分类
-                if (childDTO.getType() == 0) {
-                    deptList.add(childDTO); // 子部门
-                } else {
-                    employList.add(childDTO); // 子员工
-                }
-            }
-
-            dto.setDeptList(deptList.isEmpty() ? null : deptList);
-            dto.setEmployList(employList.isEmpty() ? null : employList);
-        }
-
-        return dto;
-    }
-
-    /**
-     * 构建 LDAP 树形结构（仅包含配置的子树）
-     *
-     * @param allNodes 所有 LDAP 节点
-     * @return 树形结构列表
-     */
-    private List<LdapTreeNode> buildTree(List<LdapTreeNode> allNodes) {
-        List<LdapTreeNode> roots = new ArrayList<>();
-        Map<String, LdapTreeNode> dnMap = new HashMap<>();
-
-        // 创建 DN 到节点的映射（过滤掉没有 DN 的节点）
-        for (LdapTreeNode node : allNodes) {
-            if (node.getDn() != null && !node.getDn().isEmpty()) {
-                dnMap.put(node.getDn().toLowerCase(), node);
-            }
-        }
-
-        // 构建树形结构
-        for (LdapTreeNode node : allNodes) {
-            // 跳过没有 DN 的节点
-            if (node.getDn() == null || node.getDn().isEmpty()) {
-                continue;
-            }
-
-            String dn = node.getDn().toLowerCase();
-
-            // 检查该节点是否属于配置的子树范围
-            if (!isInSubTree(dn)) {
-                continue; // 跳过不在配置子树范围内的节点
-            }
-
-            // 解析父 DN
-            String parentDn = getParentDn(dn);
-
-            if (parentDn == null || parentDn.isEmpty()) {
-                // 根节点
-                roots.add(node);
-            } else {
-                // 查找父节点并添加为子节点
-                LdapTreeNode parentNode = dnMap.get(parentDn.toLowerCase());
-                if (parentNode != null) {
-                    // 只有当父节点也在子树范围内时才添加
-                    if (isInSubTree(parentDn.toLowerCase())) {
-                        parentNode.addChild(node);
-                    } else {
-                        // 如果父节点不在子树范围内，则当前节点作为根节点
-                        roots.add(node);
-                    }
-                } else {
-                    // 如果找不到父节点，也作为根节点
-                    roots.add(node);
-                }
-            }
-        }
-
-        return roots;
-    }
-
-    /**
-     * 判断节点是否在配置的子树范围内
-     *
-     * @param dn 节点的 DN(小写)
-     * @return 是否在子树范围内
-     */
-    private boolean isInSubTree(String dn) {
-        if (dn == null || dn.isEmpty()) {
-            return false;
-        }
-
-        String lowerDn = dn.toLowerCase();
-        String lowerBase = configService.getLdapBase().toLowerCase();
-
-        // baseDn 本身始终包含
-        if (lowerDn.equals(lowerBase)) {
-            return true;
-        }
-
-        // 如果配置了子树限制,检查是否属于某个子树或其子节点
-        List<String> subTrees = configService.getLdapTrees();
-        if (!CollectionUtils.isEmpty(subTrees)) {
-            for (String subTree : subTrees) {
-                String lowerSubTree = subTree.toLowerCase();
-                // 完全匹配或是子路径
-                if (lowerDn.equals(lowerSubTree) || lowerDn.endsWith("," + lowerSubTree)) {
-                    return true;
-                }
-            }
-            // 如果配置了子树限制,但节点不属于任何子树,则排除
-            return false;
-        }
-
-        // 如果没有配置子树限制,则包含 baseDn 下的所有节点
-        return lowerDn.endsWith("," + lowerBase);
-    }
-
-    /**
-     * 从 DN 中解析父 DN
-     *
-     * @param dn 当前 DN
-     * @return 父 DN
-     */
-    private String getParentDn(String dn) {
-        if (dn == null || dn.isEmpty()) {
-            return null;
-        }
-
-        // DN 格式：cn=user,ou=dept,dc=example,dc=com
-        int firstCommaIndex = dn.indexOf(',');
-        if (firstCommaIndex == -1) {
-            return null; // 没有父节点
-        }
-
-        String parentDn = dn.substring(firstCommaIndex + 1).trim();
-        return parentDn.isEmpty() ? null : parentDn;
-    }
-
-    /**
-     * 从 LDAP 查询平铺的节点列表(无树形关系)
-     *
+     * @param base 搜索根 DN（一次 SUBTREE 搜索）
      * @return 平铺的节点列表
      */
-    private List<LdapTreeNode> getLdapEntriesFromLdap() {
-        String cacheKey = configService.getLdapBase();
-
+    private List<LdapTreeNode> fetchFromLdap(String base) {
         // 使用 AndFilter 和 HardcodedFilter 来查询所有条目，但排除组对象
         // 过滤条件：objectClass=person 或 objectClass=organizationalUnit，排除 group/groupOfNames
         AndFilter filter = new AndFilter();
         filter.and(new HardcodedFilter("(|(objectClass=person)(objectClass=organizationalUnit))"));
 
-        // 查询该目录下的所有数据
+        // 查询该根下的所有数据
         return ldapTemplate.search(
                 LdapQueryBuilder.query()
-                        .base(cacheKey)
+                        .base(base)
                         .searchScope(SearchScope.SUBTREE)
                         .filter(filter.encode()),
                 (ContextMapper<LdapTreeNode>) ctx -> {
@@ -506,21 +196,50 @@ public class LdapService {
     }
 
     /**
-     * 缓存条目
+     * 暴露全量 LDAP 条目（person + organizationalUnit），供 LdapSyncService 预览/apply 使用。
+     * 按配置的 subTree 列表逐根拉取并合并去重；未配置 subTree 时返回空（不展示/不同步）。
      */
-    @Data
-    private static class CacheEntry {
-        private List<LdapTreeNode> nodes;
-        private long expireTime; // 过期时间戳(毫秒)
-
-        public CacheEntry(List<LdapTreeNode> nodes, long ttlMillis) {
-            this.nodes = nodes;
-            this.expireTime = System.currentTimeMillis() + ttlMillis;
+    public List<LdapTreeNode> getAllLdapEntries() {
+        List<String> roots = configService.getLdapTrees();
+        if (roots == null || roots.isEmpty()) {
+            return List.of();
         }
-
-        public boolean isExpired() {
-            return System.currentTimeMillis() > expireTime;
+        List<LdapTreeNode> all = new ArrayList<>();
+        for (String root : roots) {
+            all.addAll(fetchFromLdap(root));
         }
+        return dedupe(all);
+    }
+
+    /**
+     * 按 subTree 根分组拉取，供定时全量同步使用。
+     * - 任一已配置根连接异常会向上抛出（由调用方判定跳过整轮）。
+     * - 已配置根连接正常但返回 0 条时打 warning（可能 DN 写错或该分支已从 LDAP 删除）。
+     */
+    public Map<String, List<LdapTreeNode>> getAllLdapEntriesByRoot() {
+        Map<String, List<LdapTreeNode>> byRoot = new HashMap<>();
+        List<String> roots = configService.getLdapTrees();
+        if (roots == null || roots.isEmpty()) {
+            return byRoot;
+        }
+        for (String root : roots) {
+            List<LdapTreeNode> entries = fetchFromLdap(root);
+            byRoot.put(root, entries);
+            if (entries.isEmpty()) {
+                log.warn("[LDAP-SYNC] 已配置 subTree 根 {} 连接正常但返回 0 条节点（可能 DN 写错或该分支已从 LDAP 删除）", root);
+            }
+        }
+        return byRoot;
+    }
+
+    private List<LdapTreeNode> dedupe(List<LdapTreeNode> list) {
+        Map<String, LdapTreeNode> byDn = new LinkedHashMap<>();
+        for (LdapTreeNode n : list) {
+            if (n.getDn() != null) {
+                byDn.putIfAbsent(n.getDn().toLowerCase(), n);
+            }
+        }
+        return new ArrayList<>(byDn.values());
     }
 
     /**

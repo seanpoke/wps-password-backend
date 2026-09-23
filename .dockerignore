@@ -47,3 +47,18 @@ src/main/doc/
 
 # Test
 test-output/
+
+# 前端依赖与构建产物（容器内由 node 阶段重新构建，无需纳入上下文）
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# 前端构建输出（由 Dockerfile 内 node 阶段生成，避免携带本地陈旧副本）
+webroot/
+
+# 运行时临时目录（部署脚本/日志/密码日志，非源码）
+tmp/
+passwordLog/
+
+# 会话/私有记忆（CodeBuddy 工作记忆，非项目源码）
+.codebuddy/

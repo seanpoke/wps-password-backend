@@ -93,14 +93,6 @@ public class PasswordLogWriterService {
     }
 
     /**
-     * 优雅关闭（在应用关闭时调用）
-     */
-    public void shutdown() {
-        log.info("[PasswordLogWriterService] 开始关闭日志写入服务...");
-        log.info("[PasswordLogWriterService] 日志写入服务已关闭（logback会自动处理剩余日志）");
-    }
-
-    /**
      * 日志消息对象
      */
     @Data

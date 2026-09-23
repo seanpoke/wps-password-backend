@@ -11,6 +11,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      fix-perms:
+        condition: service_completed_successfully
     environment:
       - SPRING_PROFILES_ACTIVE=prod
       - MYSQL_HOST=mysql8
@@ -21,6 +23,8 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=sean1234
       - TZ=Asia/Shanghai
+      # 环境连不到 LDAP 时禁用 Actuator 的 LDAP 健康探测，避免 health 被置为 DOWN(503)
+      - MANAGEMENT_HEALTH_LDAP_ENABLED=false
     volumes:
       - ./logs:/app/logs
       - ./passwordLog:/app/passwordLog
@@ -32,6 +36,22 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  # --- 1.5 权限修复容器（仅执行一次即退出） ---
+  # bind mount 的宿主目录由 Docker 守护进程以 root 自动创建(755)，
+  # 而 wps-app 以非 root 的 appuser 运行，无法写入 -> Permission denied。
+  # 此容器以 root 将目录开放写权限，wps-app 依赖它完成后才启动，
+  # 因此换任何机器 `up` 都无需手动 chown。
+  fix-perms:
+    image: alpine:latest
+    user: "0:0"
+    command: ["sh", "-c", "chmod -R a+rwX /data/logs /data/passwordLog && echo '[fix-perms] done'"]
+    volumes:
+      - ./logs:/data/logs
+      - ./passwordLog:/data/passwordLog
+    networks:
+      - wps_network
+    restart: "no"
 
   # --- 2. MySQL 数据库 ---
   mysql8:

@@ -3,6 +3,7 @@ package com.docauth.service;
 import com.docauth.dto.DecryptResponse;
 import com.docauth.dto.EncryptResponse;
 import com.docauth.dto.KeyInfoResponse;
+import com.docauth.dto.LdapConfigDto;
 import com.docauth.entity.ConfigSecretKey;
 import com.docauth.entity.DocConfig;
 import com.docauth.repository.ConfigSecretKeyRepository;
@@ -34,6 +35,10 @@ public class ConfigService {
     public static final String LDAP_PASSWORD = "pswword";  // 注意: SQL 中是 pswword
     public static final String LDAP_BASE_DN = "baseDn";
     public static final String LDAP_SUB_TREE = "subTree";
+    /** 定时全量同步触发时刻（逗号分隔，如 "10:00,20:00"） */
+    public static final String LDAP_SYNC_TIMES = "syncTimes";
+    /** 定时同步总开关（"true"/"false"，默认 true） */
+    public static final String LDAP_SYNC_ENABLED = "syncEnabled";
     // 系统配置键常量
     public static final String SYS_NO_TOKEN_URL = "no-token-url";
     // 缓存配置键常量
@@ -50,13 +55,11 @@ public class ConfigService {
     private String ldapUsername;
     private String ldapPassword;
     private List<String> ldapTrees;
+    private String syncTimes;
+    private Boolean syncEnabled;
     private List<String> noTokenUrls;
     private Long cacheExpireMinutes; // 缓存过期时间(分钟)
     private Long redisTokenExpireMinutes; // Redis Token过期时间(分钟)
-
-    // 密钥配置值
-    private String publicKey;
-    private String privateKey;
 
     /**
      * 从数据库加载 LDAP 配置
@@ -81,8 +84,13 @@ public class ConfigService {
                 ldapTrees = List.of();
             }
 
-            log.info("LDAP 配置加载成功 - URL: {}, Base: {}, Trees: {}",
-                    ldapUrl, ldapBase, ldapTrees);
+            // 定时同步配置
+            syncTimes = getConfigValue(LDAP_SYNC_TIMES);
+            String enabled = getConfigValue(LDAP_SYNC_ENABLED);
+            syncEnabled = !"false".equalsIgnoreCase(enabled); // 默认开启
+
+            log.info("LDAP 配置加载成功 - URL: {}, Base: {}, Trees: {}, SyncTimes: {}, SyncEnabled: {}",
+                    ldapUrl, ldapBase, ldapTrees, syncTimes, syncEnabled);
         } catch (Exception e) {
             log.error("加载 LDAP 配置失败: {}", e.getMessage(), e);
             throw new RuntimeException("加载 LDAP 配置失败", e);
@@ -166,14 +174,10 @@ public class ConfigService {
                     .orElse(null);
 
             if (latestKey != null) {
-                publicKey = latestKey.getPublicKey();
-                privateKey = latestKey.getPrivateKey();
                 log.info("密钥配置加载成功，keyVersion: {}, orderNum: {}",
                         latestKey.getKeyVersion(), latestKey.getOrderNum());
             } else {
                 log.warn("未找到任何配置密钥，请确保config_secret_key表中有数据");
-                publicKey = null;
-                privateKey = null;
             }
         } catch (Exception e) {
             log.error("加载密钥配置失败: {}", e.getMessage(), e);
@@ -229,6 +233,20 @@ public class ConfigService {
     }
 
     /**
+     * 获取定时同步触发时刻字符串（逗号分隔，如 "10:00,20:00"；未配置返回 null）
+     */
+    public String getSyncTimes() {
+        return syncTimes;
+    }
+
+    /**
+     * 定时同步是否开启（默认 true）
+     */
+    public boolean isSyncEnabled() {
+        return syncEnabled != null && syncEnabled;
+    }
+
+    /**
      * 获取无需 Token 验证的 URL 列表
      */
     public List<String> getNoTokenUrls() {
@@ -249,19 +267,9 @@ public class ConfigService {
         return redisTokenExpireMinutes != null ? redisTokenExpireMinutes : 4320L;
     }
 
-    /**
-     * 获取公钥
-     */
-    public String getPublicKey() {
-        return publicKey;
-    }
 
-    /**
-     * 获取私钥
-     */
-    public String getPrivateKey() {
-        return privateKey;
-    }
+
+
 
     /**
      * 更新配置
@@ -281,6 +289,76 @@ public class ConfigService {
                 },
                 () -> log.warn("配置项不存在: {}", key)
         );
+    }
+
+    /**
+     * 结构化保存 LDAP 配置（含连接信息、subTree 多值、定时同步周期与开关）。
+     * <ul>
+     *   <li>url/baseDn/username：非空即覆盖。</li>
+     *   <li>password：仅当非空（且非纯空白）时覆盖现有密码；前端留空表示不修改。</li>
+     *   <li>trees（subTree 多值）：整组替换——删除该 key 下全部旧记录后重新插入。</li>
+     *   <li>syncTimes/syncEnabled：非空即覆盖（syncEnabled 存 "true"/"false"）。</li>
+     * </ul>
+     * 保存结束后重新加载内存配置。
+     */
+    public void saveLdapConfig(LdapConfigDto dto) {
+        if (dto.getUrl() != null && !dto.getUrl().isBlank()) {
+            setConfigValue(LDAP_URL, dto.getUrl());
+        }
+        if (dto.getBaseDn() != null && !dto.getBaseDn().isBlank()) {
+            setConfigValue(LDAP_BASE_DN, dto.getBaseDn());
+        }
+        if (dto.getUsername() != null && !dto.getUsername().isBlank()) {
+            setConfigValue(LDAP_USERNAME, dto.getUsername());
+        }
+        if (dto.getPassword() != null && !dto.getPassword().isBlank()) {
+            setConfigValue(LDAP_PASSWORD, dto.getPassword());
+        }
+        if (dto.getTrees() != null) {
+            replaceSubTrees(dto.getTrees());
+        }
+        if (dto.getSyncTimes() != null) {
+            setConfigValue(LDAP_SYNC_TIMES, dto.getSyncTimes());
+        }
+        if (dto.getSyncEnabled() != null) {
+            setConfigValue(LDAP_SYNC_ENABLED, String.valueOf(dto.getSyncEnabled()));
+        }
+        loadLdapConfig();
+        log.info("[ConfigService] LDAP 配置已保存并重新加载");
+    }
+
+    /** 新增或更新单条配置（不存在则插入）。 */
+    private void setConfigValue(String key, String value) {
+        docConfigRepository.findFirstByTypeAndKey(CONFIG_TYPE_LDAP, key).ifPresentOrElse(
+                config -> {
+                    config.setValue(value);
+                    docConfigRepository.save(config);
+                },
+                () -> {
+                    DocConfig c = new DocConfig();
+                    c.setType(CONFIG_TYPE_LDAP);
+                    c.setKey(key);
+                    c.setValue(value);
+                    docConfigRepository.save(c);
+                }
+        );
+    }
+
+    /** subTree 整组替换：删除该 key 下全部旧记录，再插入非空白新值。 */
+    private void replaceSubTrees(List<String> trees) {
+        List<DocConfig> existing = docConfigRepository.findByTypeAndKey(CONFIG_TYPE_LDAP, LDAP_SUB_TREE);
+        if (existing != null && !existing.isEmpty()) {
+            docConfigRepository.deleteAll(existing);
+        }
+        for (String t : trees) {
+            if (t != null && !t.trim().isBlank()) {
+                DocConfig c = new DocConfig();
+                c.setType(CONFIG_TYPE_LDAP);
+                c.setKey(LDAP_SUB_TREE);
+                c.setValue(t.trim());
+                docConfigRepository.save(c);
+            }
+        }
     }
 
     /**

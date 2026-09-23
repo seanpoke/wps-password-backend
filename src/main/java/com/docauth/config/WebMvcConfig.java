@@ -28,23 +28,28 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        // 从数据库获取无需 Token 验证的 URL 列表
-        var noTokenUrls = configService.getNoTokenUrls();
-
-        // 合并数据库配置和硬编码的排除路径
-        String[] excludePatterns = new String[noTokenUrls.size() + 4];
-        for (int i = 0; i < noTokenUrls.size(); i++) {
-            excludePatterns[i] = noTokenUrls.get(i);
-        }
-        excludePatterns[excludePatterns.length - 4] = "/account/logout";
-        excludePatterns[excludePatterns.length - 3] = "/swagger-ui/**";
-        excludePatterns[excludePatterns.length - 2] = "/v3/api-docs/**";
-        excludePatterns[excludePatterns.length - 1] = "/webjars/**";
+        // 硬编码放行：接口类
+        // 注意：不再把 noTokenUrls（/account/login、/config/**）加入 excludePathPatterns，
+        // 改由 TokenInterceptor 以“可选鉴权”方式处理：白名单路径匿名可访问（如 GET /config/ldap），
+        // 但携带 token 时仍填充 UserContext，使 ConfigController.assertAdmin 等鉴权生效。
+        var excludes = new java.util.ArrayList<String>();
+        // 硬编码放行：接口类
+        excludes.add("/account/logout");
+        excludes.add("/swagger-ui.html");
+        excludes.add("/swagger-ui/**");
+        excludes.add("/v3/api-docs/**");
+        excludes.add("/webjars/**");
+        // 硬编码放行：前端静态页面（验证页 + 新管理后台 SPA）
+        excludes.add("/verify.html");
+        excludes.add("/admin.html");
+        excludes.add("/");
+        excludes.add("/index.html");
+        excludes.add("/assets/**");
 
         // 注册Token拦截器，对所有请求进行拦截（除了排除的路径）
         registry.addInterceptor(tokenInterceptor)
                 .addPathPatterns("/**")
-                .excludePathPatterns(excludePatterns);
+                .excludePathPatterns(excludes);
     }
 
     @Override

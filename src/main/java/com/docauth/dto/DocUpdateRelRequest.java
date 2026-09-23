@@ -11,11 +11,11 @@ public class DocUpdateRelRequest {
     @Schema(description = "文档ID", example = "doc123456", requiredMode = Schema.RequiredMode.REQUIRED)
     private String docId;
 
-    @Schema(description = "用户DN列表", example = "[\"cn=张三,ou=技术部,dc=example,dc=com\"]")
-    private List<String> accountDnList;
+    @Schema(description = "用户ID列表（sys_user.id）")
+    private List<Long> userIdList;
 
-    @Schema(description = "部门DN列表", example = "[\"ou=技术部,dc=example,dc=com\"]")
-    private List<String> deptDnList;
+    @Schema(description = "部门ID列表（sys_dept.id）")
+    private List<Long> deptIdList;
 
     @Schema(description = "是否为临时操作，true则跳过文件存在性和所有者校验", example = "false", defaultValue = "false")
     private Boolean isTemp = false;

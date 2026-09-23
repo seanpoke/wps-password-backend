@@ -66,54 +66,10 @@ public class RedisUtil {
     }
 
     /**
-     * 检查键是否存在
-     */
-    public boolean exists(String key) {
-        return stringRedisTemplate.hasKey(key);
-    }
-
-    /**
      * 重置键的过期时间
      */
     public boolean expire(String key, long timeout, TimeUnit unit) {
         return stringRedisTemplate.expire(key, timeout, unit);
     }
 
-    /**
-     * 将对象添加到Set中
-     */
-    public void addToSet(String key, Object value) {
-        try {
-            String json = objectMapper.writeValueAsString(value);
-            stringRedisTemplate.opsForSet().add(key, json);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("对象序列化失败", e);
-        }
-    }
-
-    /**
-     * 获取Set中的所有对象
-     */
-    public <T> java.util.Set<T> getSetMembers(String key, Class<T> clazz) {
-        java.util.Set<String> members = stringRedisTemplate.opsForSet().members(key);
-        if (members == null || members.isEmpty()) {
-            return java.util.Collections.emptySet();
-        }
-        try {
-            java.util.Set<T> result = new java.util.HashSet<>();
-            for (String json : members) {
-                result.add(objectMapper.readValue(json, clazz));
-            }
-            return result;
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("对象反序列化失败", e);
-        }
-    }
-
-    /**
-     * 设置Set的过期时间
-     */
-    public boolean expireSet(String key, long timeout, TimeUnit unit) {
-        return stringRedisTemplate.expire(key, timeout, unit);
-    }
 }

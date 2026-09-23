@@ -19,6 +19,7 @@ public class DocConfig {
 
     private String type;
 
+    @Column(name = "`key`")
     private String key;
 
     private String value;

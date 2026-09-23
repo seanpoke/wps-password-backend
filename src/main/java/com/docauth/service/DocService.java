@@ -1,5 +1,6 @@
 package com.docauth.service;
 
+import com.docauth.context.UserContext;
 import com.docauth.context.UserContextHolder;
 import com.docauth.dto.DocOwnerResponse;
 import com.docauth.dto.DocPasswordResponse;
@@ -7,17 +8,27 @@ import com.docauth.dto.LdapNodeDTO;
 import com.docauth.entity.ConfigSecretKey;
 import com.docauth.entity.DocInfo;
 import com.docauth.entity.DocShareRel;
+import com.docauth.entity.SysDept;
+import com.docauth.entity.SysUser;
 import com.docauth.repository.ConfigSecretKeyRepository;
 import com.docauth.repository.DocInfoRepository;
 import com.docauth.repository.DocShareRelRepository;
+import com.docauth.repository.SysDeptRepository;
+import com.docauth.repository.SysUserRepository;
+import com.docauth.service.ScopeService;
 import com.docauth.util.EccUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * 文档服务 - 处理文档管理相关业务逻辑
@@ -41,6 +52,18 @@ public class DocService {
     @Autowired
     private PasswordLogWriterService passwordLogWriterService;
 
+    @Autowired
+    private ScopeService scopeService;
+
+    @Autowired
+    private SysDeptRepository sysDeptRepository;
+
+    @Autowired
+    private SysUserRepository sysUserRepository;
+
+    @Autowired
+    private OrgTreeCacheService orgTreeCacheService;
+
     /**
      * 获取文档所有者信息
      *
@@ -49,6 +72,7 @@ public class DocService {
      * @return 文档所有者响应对象
      * @throws RuntimeException 业务异常时抛出
      */
+    @Transactional
     public DocOwnerResponse getDocOwner(String docId, String fileName) {
         log.info("[getDocOwner] 开始处理，docId: {}, fileName: {}", docId, fileName);
 
@@ -67,16 +91,24 @@ public class DocService {
             String name = UserContextHolder.getCurrentName();
 
             // 创建新的DocInfo记录（不再存储公私钥）
-            docInfo = new DocInfo();
-            docInfo.setUid(docId);
-            docInfo.setAccount(account);
-            docInfo.setName(name != null ? name : account);
-            docInfo.setFileName(fileName);
-            docInfo.setCreateBy(account);
-            docInfoRepository.save(docInfo);
+            DocInfo newDoc = new DocInfo();
+            newDoc.setUid(docId);
+            newDoc.setAccount(account);
+            newDoc.setName(name != null ? name : account);
+            newDoc.setFileName(fileName);
+            newDoc.setCreateBy(account);
+            try {
+                docInfo = docInfoRepository.save(newDoc);
+            } catch (DataIntegrityViolationException ex) {
+                // 并发首访导致 uid 唯一冲突（doc_info.uid 已加唯一索引）：复用已存在记录
+                docInfo = docInfoRepository.findByUid(docId);
+                if (docInfo == null) {
+                    throw ex;
+                }
+                log.warn("[getDocOwner] 并发创建冲突，复用已存在记录，docId: {}", docId);
+            }
 
             log.info("[getDocOwner] 创建新文档记录，docId: {}, owner: {}, fileName: {}", docId, account, fileName);
-
 
         } else if (fileName != null && !fileName.isEmpty() && docInfo.getFileName() == null) {
             // 如果文档已存在但fileName为空，则更新fileName
@@ -210,39 +242,46 @@ public class DocService {
      * @return 是否有权限
      */
     public boolean hasUserPermission(String docId, String currentAccount) {
-        // 第一步：根据docId查询账号权限的dnList集合
-        List<DocShareRel> shareRels = docShareRelRepository.findByUid(docId);
-        if (shareRels == null || shareRels.isEmpty()) {
+        SysUser u = sysUserRepository.findByAccount(currentAccount).orElse(null);
+        if (u == null) {
+            return false;
+        }
+        Long userId = u.getId();
+        Long userDeptId = u.getDeptId();
+
+        List<DocShareRel> rels = docShareRelRepository.findByUid(docId);
+        if (rels == null || rels.isEmpty()) {
             return false;
         }
 
-        // 提取所有授权的DN路径
-        List<String> authorizedDnList = new ArrayList<>();
-        for (DocShareRel rel : shareRels) {
-            if (rel.getDn() != null && !rel.getDn().isEmpty()) {
-                authorizedDnList.add(rel.getDn());
+        Set<Long> ancestorDepts = ancestorDeptIds(userDeptId); // 含自身及其所有祖先
+        for (DocShareRel rel : rels) {
+            if (rel.getInvalid() != null && rel.getInvalid() == 1) {
+                continue; // 失效授权忽略
+            }
+            if (rel.getType() == 1) {
+                if (rel.getTargetId() != null && rel.getTargetId().equals(userId)) {
+                    return true;
+                }
+            } else if (rel.getType() == 0) {
+                if (rel.getTargetId() != null && ancestorDepts.contains(rel.getTargetId())) {
+                    return true;
+                }
             }
         }
-
-        if (authorizedDnList.isEmpty()) {
-            return false;
-        }
-
-        // 第二步：通过ldap查询当前用户的dn
-        String accountDn = ldapService.getUserDn(currentAccount);
-        if (accountDn == null || accountDn.isEmpty()) {
-            return false;
-        }
-
-        // 第三步：判断账号的dn是否属于"集合中某条路径"的子集（或就是该路径本身）
-        for (String authorizedDn : authorizedDnList) {
-            // 判断accountDn是否是authorizedDn的子路径或相同路径
-            if (isDnSubPath(accountDn, authorizedDn)) {
-                return true;
-            }
-        }
-
         return false;
+    }
+
+    /** 收集部门自身及其所有祖先部门的 id 集合（用于部门级授权的子树判定） */
+    private Set<Long> ancestorDeptIds(Long deptId) {
+        Set<Long> set = new HashSet<>();
+        Long cur = deptId;
+        while (cur != null) {
+            set.add(cur);
+            SysDept d = sysDeptRepository.findById(cur).orElse(null);
+            cur = d != null ? d.getParentId() : null;
+        }
+        return set;
     }
 
     /**
@@ -253,7 +292,36 @@ public class DocService {
      */
     public List<LdapNodeDTO> getAuthTree(String docId) {
         log.info("[getAuthTree] 开始处理，docId: {}", docId);
-        return ldapService.getLdapTreeWithAuth(docId);
+        UserContext uc = UserContextHolder.getUserContext();
+        if (uc == null || uc.getAccount() == null) {
+            throw new RuntimeException("未授权：用户未登录");
+        }
+
+        // 按当前用户的可见范围过滤组织树（id 化）；结构取自缓存的权限树，hasAuth 每请求现算
+        ScopeService.UserScope scope = scopeService.computeScope(uc.getAccount(), uc.getSource());
+        Map<String, LdapNodeDTO> byKey = new HashMap<>();
+        Set<String> authKeys = new HashSet<>();
+        List<DocShareRel> rels = docId != null ? docShareRelRepository.findByUid(docId) : null;
+        if (rels != null) {
+            for (DocShareRel r : rels) {
+                if (r.getInvalid() != null && r.getInvalid() == 1) {
+                    continue; // 失效授权忽略
+                }
+                authKeys.add(r.getType() + ":" + r.getTargetId());
+            }
+        }
+        List<LdapNodeDTO> roots = copyTree(orgTreeCacheService.getPermissionTree(), byKey, authKeys);
+        if (scope.isFull()) {
+            return roots;
+        }
+        List<LdapNodeDTO> result = new ArrayList<>();
+        for (Long deptId : scope.getRoots()) {
+            LdapNodeDTO n = byKey.get("0:" + deptId);
+            if (n != null) {
+                result.add(n);
+            }
+        }
+        return result;
     }
 
     /**
@@ -266,11 +334,11 @@ public class DocService {
      * @throws RuntimeException 业务异常时抛出
      */
     @Transactional
-    public void updateDocAuth(String docId, List<String> accountDnList, List<String> deptDnList, Boolean isTemp) {
-        log.info("[updateDocAuth] 开始处理，docId: {}, accountDnList size: {}, deptDnList size: {}, isTemp: {}",
+    public void updateDocAuth(String docId, List<Long> userIdList, List<Long> deptIdList, Boolean isTemp) {
+        log.info("[updateDocAuth] 开始处理，docId: {}, userIdList size: {}, deptIdList size: {}, isTemp: {}",
                 docId,
-                accountDnList != null ? accountDnList.size() : 0,
-                deptDnList != null ? deptDnList.size() : 0,
+                userIdList != null ? userIdList.size() : 0,
+                deptIdList != null ? deptIdList.size() : 0,
                 isTemp);
 
         // 从Token中获取当前登录用户信息
@@ -282,46 +350,7 @@ public class DocService {
         // 如果isTemp为true，跳过文件存在性校验和所有者校验
         if (isTemp != null && isTemp) {
             log.info("[updateDocAuth] isTemp为true，跳过文件存在性和所有者校验，docId: {}", docId);
-
-            // 直接执行授权更新逻辑
-            // 删除doc_share_rel表中该docId的所有旧授权记录
-            List<DocShareRel> oldRelations = docShareRelRepository.findByUid(docId);
-            if (!oldRelations.isEmpty()) {
-                docShareRelRepository.deleteAll(oldRelations);
-                log.info("[updateDocAuth] 删除旧授权记录数量: {}", oldRelations.size());
-            }
-
-            // 遍历accountDnList，插入用户授权记录
-            if (accountDnList != null && !accountDnList.isEmpty()) {
-                for (String dn : accountDnList) {
-                    DocShareRel shareRel = new DocShareRel();
-                    shareRel.setUid(docId);
-                    shareRel.setType(1); // 1表示用户
-                    String value = extractValueFromDn(dn);
-                    shareRel.setName(value);
-                    shareRel.setDn(dn);
-                    shareRel.setCreateBy(currentAccount);
-                    docShareRelRepository.save(shareRel);
-                }
-                log.info("[updateDocAuth] 添加用户授权记录数量: {}", accountDnList.size());
-            }
-
-            // 遍历deptDnList，插入部门授权记录
-            if (deptDnList != null && !deptDnList.isEmpty()) {
-                for (String dn : deptDnList) {
-                    DocShareRel shareRel = new DocShareRel();
-                    shareRel.setUid(docId);
-                    shareRel.setType(0); // 0表示部门
-                    String value = extractValueFromDn(dn);
-                    shareRel.setName(value);
-                    shareRel.setDn(dn);
-                    shareRel.setCreateBy(currentAccount);
-                    docShareRelRepository.save(shareRel);
-                }
-                log.info("[updateDocAuth] 添加部门授权记录数量: {}", deptDnList.size());
-            }
-
-            log.info("[updateDocAuth] 授权更新成功（临时模式），docId: {}", docId);
+            applyAuth(docId, userIdList, deptIdList, currentAccount);
             return;
         }
 
@@ -336,44 +365,47 @@ public class DocService {
             throw new RuntimeException("无操作权限，仅文档所有者可更新授权");
         }
 
-        // 删除doc_share_rel表中该docId的所有旧授权记录
-        List<DocShareRel> oldRelations = docShareRelRepository.findByUid(docId);
-        if (!oldRelations.isEmpty()) {
-            docShareRelRepository.deleteAll(oldRelations);
-            log.info("[updateDocAuth] 删除旧授权记录数量: {}", oldRelations.size());
-        }
-
-        // 遍历accountDnList，插入用户授权记录
-        if (accountDnList != null && !accountDnList.isEmpty()) {
-            for (String dn : accountDnList) {
-                DocShareRel shareRel = new DocShareRel();
-                shareRel.setUid(docId);
-                shareRel.setType(1); // 1表示用户
-                String value = extractValueFromDn(dn);
-                shareRel.setName(value);
-                shareRel.setDn(dn);
-                shareRel.setCreateBy(currentAccount);
-                docShareRelRepository.save(shareRel);
-            }
-            log.info("[updateDocAuth] 添加用户授权记录数量: {}", accountDnList.size());
-        }
-
-        // 遍历deptDnList，插入部门授权记录
-        if (deptDnList != null && !deptDnList.isEmpty()) {
-            for (String dn : deptDnList) {
-                DocShareRel shareRel = new DocShareRel();
-                shareRel.setUid(docId);
-                shareRel.setType(0); // 0表示部门
-                String value = extractValueFromDn(dn);
-                shareRel.setName(value);
-                shareRel.setDn(dn);
-                shareRel.setCreateBy(currentAccount);
-                docShareRelRepository.save(shareRel);
-            }
-            log.info("[updateDocAuth] 添加部门授权记录数量: {}", deptDnList.size());
-        }
-
+        applyAuth(docId, userIdList, deptIdList, currentAccount);
         log.info("[updateDocAuth] 授权更新成功，docId: {}", docId);
+    }
+
+    /** 删除旧授权并写入 id 化新授权（部门 type=0 / 用户 type=1） */
+    private void applyAuth(String docId, List<Long> userIdList, List<Long> deptIdList, String currentAccount) {
+        List<DocShareRel> old = docShareRelRepository.findByUid(docId);
+        if (!old.isEmpty()) {
+            docShareRelRepository.deleteAll(old);
+            log.info("[updateDocAuth] 删除旧授权记录数量: {}", old.size());
+        }
+        int userCount = 0, deptCount = 0;
+        if (deptIdList != null) {
+            for (Long id : deptIdList) {
+                SysDept d = sysDeptRepository.findById(id).orElse(null);
+                if (d == null) continue;
+                DocShareRel r = new DocShareRel();
+                r.setUid(docId);
+                r.setType(0);
+                r.setTargetId(id);
+                r.setName(d.getName());
+                r.setCreateBy(currentAccount);
+                docShareRelRepository.save(r);
+                deptCount++;
+            }
+        }
+        if (userIdList != null) {
+            for (Long id : userIdList) {
+                SysUser u = sysUserRepository.findById(id).orElse(null);
+                if (u == null) continue;
+                DocShareRel r = new DocShareRel();
+                r.setUid(docId);
+                r.setType(1);
+                r.setTargetId(id);
+                r.setName(u.getName());
+                r.setCreateBy(currentAccount);
+                docShareRelRepository.save(r);
+                userCount++;
+            }
+        }
+        log.info("[updateDocAuth] 添加部门授权 {} 条，用户授权 {} 条", deptCount, userCount);
     }
 
     /**
@@ -381,14 +413,14 @@ public class DocService {
      *
      * @param docId                文档ID
      * @param path                 文件路径
-     * @param keyVersion           密钥版本号（保留但不使用）
+     * @param keyVersion           密钥版本号（记录到审计日志）
      * @param beforePassword       修改前密码（加密字符串，不解密）
      * @param afterPassword        修改后密码（加密字符串，不解密）
      * @param possiblePasswordList 可能的密码集合（加密字符串列表，不解密不排序）
      * @param platform             操作来源平台
      */
-    public void saveLog(String docId, String path, String keyVersion, String beforePassword,
-                        String afterPassword, List<String> possiblePasswordList, String platform) {
+    public void saveLog(String docId, String path, String beforePassword,
+                        String afterPassword, List<String> possiblePasswordList, String platform, String keyVersion) {
         // 从Token中获取当前登录用户信息（在主线程中捕获）
         String currentAccount = UserContextHolder.getCurrentAccount();
         if (currentAccount == null || currentAccount.isEmpty()) {
@@ -404,8 +436,9 @@ public class DocService {
             message.setAfterPassword(afterPassword);
             message.setPossiblePasswordList(possiblePasswordList);
             message.setPlatform(platform);
+            message.setKeyVersion(keyVersion);
             message.setCreateBy(currentAccount);
-            message.setKeyVersion(keyVersion);  // 设置密钥版本号
+
             // 将消息通过logback异步记录（绝对非阻塞）
             passwordLogWriterService.offerLog(message);
         } catch (Exception e) {
@@ -416,53 +449,46 @@ public class DocService {
 
 
     /**
-     * 判断accountDn是否是authorizedDn的子路径或相同路径
-     *
-     * @param accountDn    用户的DN路径
-     * @param authorizedDn 授权的DN路径
-     * @return 是否有权限
+     * 从缓存的权限树深拷贝出一份全新节点（严禁修改缓存里的共享节点，避免并发串味），
+     * 并按授权集合打 hasAuth 标；byKey 暴露 "type:id" -> 新节点 映射，供 scope 截取子树。
      */
-    private boolean isDnSubPath(String accountDn, String authorizedDn) {
-        if (accountDn == null || authorizedDn == null) {
-            return false;
+    private List<LdapNodeDTO> copyTree(List<LdapNodeDTO> src, Map<String, LdapNodeDTO> byKey, Set<String> authKeys) {
+        List<LdapNodeDTO> out = new ArrayList<>();
+        for (LdapNodeDTO s : src) {
+            out.add(copyNode(s, byKey, authKeys));
         }
-
-        // 转为小写进行比较（LDAP DN不区分大小写）
-        String lowerAccountDn = accountDn.toLowerCase();
-        String lowerAuthorizedDn = authorizedDn.toLowerCase();
-
-        // 如果完全相同，则有权限
-        if (lowerAccountDn.equals(lowerAuthorizedDn)) {
-            return true;
-        }
-
-        // 判断accountDn是否以",authorizedDn"结尾（表示是其子路径）
-        return lowerAccountDn.endsWith("," + lowerAuthorizedDn);
+        return out;
     }
 
-    /**
-     * 从DN中提取value值（第一个等号之后且第一个逗号之前的字符串）
-     *
-     * @param dn LDAP DN字符串
-     * @return 提取的value值
-     */
-    private String extractValueFromDn(String dn) {
-        if (dn == null || dn.isEmpty()) {
-            return dn;
+    private LdapNodeDTO copyNode(LdapNodeDTO s, Map<String, LdapNodeDTO> byKey, Set<String> authKeys) {
+        LdapNodeDTO n = new LdapNodeDTO();
+        n.setId(s.getId());
+        n.setType(s.getType());
+        n.setName(s.getName());
+        n.setAccount(s.getAccount());
+        n.setDn(s.getDn());
+        String key = s.getType() + ":" + s.getId();
+        n.setHasAuth(authKeys.contains(key));
+        byKey.put(key, n);
+        if (s.getDeptList() != null) {
+            List<LdapNodeDTO> dl = new ArrayList<>();
+            for (LdapNodeDTO c : s.getDeptList()) {
+                dl.add(copyNode(c, byKey, authKeys));
+            }
+            n.setDeptList(dl);
         }
-
-        int equalsIndex = dn.indexOf("=");
-        if (equalsIndex == -1) {
-            return dn;
+        if (s.getEmployList() != null) {
+            List<LdapNodeDTO> el = new ArrayList<>();
+            for (LdapNodeDTO c : s.getEmployList()) {
+                el.add(copyNode(c, byKey, authKeys));
+            }
+            n.setEmployList(el);
         }
+        return n;
+    }
 
-        int commaIndex = dn.indexOf(",", equalsIndex + 1);
-        if (commaIndex == -1) {
-            // 如果没有逗号，返回等号之后的所有内容
-            return dn.substring(equalsIndex + 1);
-        }
-
-        // 返回第一个等号之后且第一个逗号之前的字符串
-        return dn.substring(equalsIndex + 1, commaIndex);
+    /** 主动刷新组织树缓存（DB-only） */
+    public void refreshOrgTree() {
+        orgTreeCacheService.forceRefresh();
     }
 }

@@ -1,12 +1,23 @@
 server:
   port: 8081
+  tomcat:
+    uri-encoding: UTF-8
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
 
 spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:prod}
 
+  web:
+    resources:
+      static-locations: file:./webroot/, classpath:/static/
+
   datasource:
-    url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3316}/doc_auth_system?useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&useSSL=false&serverTimezone=Asia/Shanghai&maxAllowedPacket=10485760
+    url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3316}/doc_auth_system?useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&useSSL=false&serverTimezone=Asia/Shanghai&maxAllowedPacket=10485760&allowPublicKeyRetrieval=true
     username: ${MYSQL_USER:testuser}
     password: ${MYSQL_PASSWORD:test123456}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -55,3 +66,13 @@ password:
   log:
     # 日志文件存储目录（相对路径或绝对路径）
     dir: ./passwordLog
+
+# Actuator 健康检查：禁用 LDAP 指示器
+# classpath 上存在 spring-ldap 时，Actuator 自动注册 LdapHealthIndicator，
+# 每次 /actuator/health（含 Docker HEALTHCHECK，每 30s 一次）都会真实连一次 LDAP；
+# 部署环境连不到 LDAP 时会周期性刷 WARN，并把整体 health 置为 DOWN(503)。
+management:
+  health:
+    ldap:
+      enabled: false
+
