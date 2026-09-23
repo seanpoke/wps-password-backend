@@ -6,6 +6,15 @@
   Usage: .\local_deploy.ps1   (run at project root)
 #>
 $ErrorActionPreference = 'Stop'
+
+# Clear any stale SPRING_DATASOURCE_URL left in the session env so it cannot
+# override the JDBC URL composed from .env (MYSQL_*). Otherwise the app may
+# connect to the wrong database (e.g. checkin) and fail to start.
+if (Test-Path "env:SPRING_DATASOURCE_URL") {
+    Remove-Item "env:SPRING_DATASOURCE_URL" -ErrorAction SilentlyContinue
+    Write-Host "[deploy] cleared stale SPRING_DATASOURCE_URL from session"
+}
+
 $root    = $PSScriptRoot
 $jarName = 'wps-password-backend-1.0.0.jar'
 
@@ -70,8 +79,8 @@ if ($LASTEXITCODE -ne 0) { throw 'backend build failed' }
 # 3. build frontend (output to ../webroot)
 Set-Location "$root\frontend"
 Write-Host '[deploy] building frontend SPA ...'
-# Vite 会把 chunk 体积告警输出到 stderr，在 $ErrorActionPreference='Stop' 下会被误判为致命错误而中断部署；
-# 这里临时放宽错误偏好，仅以进程退出码判断是否真正失败。
+# Vite prints chunk-size warnings to stderr; under ErrorActionPreference='Stop' that
+# would be misread as fatal and abort the deploy. Relax briefly, judge by exit code only.
 $prevEAP = $ErrorActionPreference
 $ErrorActionPreference = 'SilentlyContinue'
 npm run build 2>&1 | Out-String | Write-Host
