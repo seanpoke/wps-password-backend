@@ -67,3 +67,12 @@ password:
     # 日志文件存储目录（相对路径或绝对路径）
     dir: ./passwordLog
 
+# Actuator 健康检查：禁用 LDAP 指示器
+# classpath 上存在 spring-ldap 时，Actuator 自动注册 LdapHealthIndicator，
+# 每次 /actuator/health（含 Docker HEALTHCHECK，每 30s 一次）都会真实连一次 LDAP；
+# 部署环境连不到 LDAP 时会周期性刷 WARN，并把整体 health 置为 DOWN(503)。
+management:
+  health:
+    ldap:
+      enabled: false
+
