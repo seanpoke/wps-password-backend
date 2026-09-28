@@ -35,6 +35,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
         var excludes = new java.util.ArrayList<String>();
         // 硬编码放行：接口类
         excludes.add("/account/logout");
+        // 修改密码接口无需 token，按请求体中的 account 校验，放行拦截器
+        excludes.add("/account/change-password");
         excludes.add("/swagger-ui.html");
         excludes.add("/swagger-ui/**");
         excludes.add("/v3/api-docs/**");

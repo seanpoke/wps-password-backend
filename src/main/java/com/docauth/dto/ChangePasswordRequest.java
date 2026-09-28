@@ -7,6 +7,9 @@ import lombok.Data;
 @Schema(description = "修改密码请求(本地用户)")
 public class ChangePasswordRequest {
 
+    @Schema(description = "用户账号", example = "user1", requiredMode = Schema.RequiredMode.REQUIRED)
+    private String account;
+
     @Schema(description = "原密码", example = "123456", requiredMode = Schema.RequiredMode.REQUIRED)
     private String oldPassword;
 
