@@ -12,6 +12,7 @@
         <el-menu-item v-if="isAdmin" index="/roles"><el-icon><Key /></el-icon><span>角色管理</span></el-menu-item>
         <el-menu-item v-if="isAdmin" index="/docs"><el-icon><Document /></el-icon><span>文档管理</span></el-menu-item>
         <el-menu-item v-if="isAdmin" index="/ldap-sync"><el-icon><Switch /></el-icon><span>LDAP 同步</span></el-menu-item>
+        <el-menu-item v-if="isAdmin" index="/versions"><el-icon><Cellphone /></el-icon><span>版本管理</span></el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>
