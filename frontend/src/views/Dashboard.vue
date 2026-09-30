@@ -23,29 +23,34 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { OfficeBuilding, User, Share, DataLine } from '@element-plus/icons-vue'
+import { OfficeBuilding, User, Share, Document } from '@element-plus/icons-vue'
 import { listDepts } from '@/api/dept'
 import { listUsers } from '@/api/user'
 import { listRoles } from '@/api/role'
-import { getDeptRefs } from '@/api/visibleDept'
+import { pageDocs } from '@/api/doc'
 
 const router = useRouter()
 const cards = ref([
   { title: '部门数', value: '-', icon: OfficeBuilding, color: '#2b8' },
   { title: '用户数', value: '-', icon: User, color: '#e6a23c' },
   { title: '角色数', value: '-', icon: Share, color: '#67c23a' },
-  { title: '可见部门关联数', value: '-', icon: DataLine, color: '#409eff' }
+  { title: '文档数', value: '-', icon: Document, color: '#409eff' }
 ])
 
 function go(p) { router.push(p) }
 
 async function load() {
   try {
-    const [d, u, r, refs] = await Promise.all([listDepts(), listUsers(), listRoles(), getDeptRefs()])
+    const [d, u, r, docs] = await Promise.all([
+      listDepts(),
+      listUsers(),
+      listRoles(),
+      pageDocs({ page: 1, size: 1 })
+    ])
     cards.value[0].value = (d.data || []).length
     cards.value[1].value = (u.data || []).length
     cards.value[2].value = (r.data || []).length
-    cards.value[3].value = (refs.data || []).reduce((s, x) => s + (x.labels ? x.labels.length : 0), 0)
+    cards.value[3].value = (docs.data && docs.data.total) || 0
   } catch (e) {}
 }
 

@@ -17,7 +17,9 @@ export default defineConfig({
     proxy: {
       '/account': 'http://localhost:8081',
       '/admin': 'http://localhost:8081',
-      '/doc': 'http://localhost:8081'
+      '/doc': 'http://localhost:8081',
+      '/config': 'http://localhost:8081',
+      '/downloads': 'http://localhost:8081'
     }
   },
   build: {

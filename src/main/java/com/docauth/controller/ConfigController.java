@@ -111,11 +111,10 @@ public class ConfigController {
      * 获取最新的密钥版本和公钥
      */
     @GetMapping("/latest-key")
-    @Operation(summary = "获取最新密钥信息", description = "获取当前优先级最高的密钥版本和公钥")
+    @Operation(summary = "获取最新密钥信息", description = "获取当前优先级最高的密钥版本和公钥（无需 token）")
     public ApiResponse<KeyInfoResponse> getLatestKeyInfo() {
-        assertAdmin();
         try {
-            // 调用Service获取最新密钥信息
+            // 调用Service获取最新密钥信息（接口已对匿名开放，无需 admin 鉴权）
             KeyInfoResponse result = configService.getLatestKeyInfo();
             return ApiResponse.success(result);
         } catch (RuntimeException e) {

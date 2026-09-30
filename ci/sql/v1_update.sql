@@ -196,3 +196,31 @@ INSERT INTO sys_user_role (user_id, role_id)
 SELECT @admin_uid, @admin_rid
 WHERE @admin_uid IS NOT NULL AND @admin_rid IS NOT NULL
   AND NOT EXISTS (SELECT 1 FROM sys_user_role WHERE user_id=@admin_uid AND role_id=@admin_rid);
+
+/* ===================== 9. 客户端版本表 app_version =====================
+   每平台维护多个版本（版本历史），通过 is_min / is_latest 标记最低支持版本与最新版本；
+   同一版本可同时标记两者（即强制全员锁定到该版本）。 */
+
+CREATE TABLE IF NOT EXISTS app_version (
+    id             BIGINT       NOT NULL AUTO_INCREMENT,
+    platform       VARCHAR(20)  NOT NULL COMMENT '平台: win/android/mac/ios',
+    ver            VARCHAR(32)  NOT NULL COMMENT '版本号',
+    download_url   VARCHAR(512) DEFAULT NULL COMMENT '下载地址',
+    changelog      TEXT         DEFAULT NULL COMMENT '更新说明',
+    release_time   DATETIME     DEFAULT NULL COMMENT '发布时间',
+    status         TINYINT      NOT NULL DEFAULT 1 COMMENT '1启用 0停用',
+    is_min         TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '是否最低支持版本',
+    is_latest      TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '是否最新版本',
+    create_time    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time    DATETIME     DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_app_version_platform_ver (platform, ver)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客户端版本表(每平台多版本)';
+
+INSERT INTO app_version (platform, ver, download_url, changelog, release_time, status, is_min, is_latest)
+SELECT 'win', '1.0.0', NULL, '初始版本', NOW(), 1, 1, 1
+WHERE NOT EXISTS (SELECT 1 FROM app_version WHERE platform='win' AND ver='1.0.0');
+
+INSERT INTO app_version (platform, ver, download_url, changelog, release_time, status, is_min, is_latest)
+SELECT 'android', '1.0.0', NULL, '初始版本', NOW(), 1, 1, 1
+WHERE NOT EXISTS (SELECT 1 FROM app_version WHERE platform='android' AND ver='1.0.0');

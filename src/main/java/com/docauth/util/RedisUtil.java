@@ -72,4 +72,18 @@ public class RedisUtil {
         return stringRedisTemplate.expire(key, timeout, unit);
     }
 
+    /**
+     * 自增计数器（按字符串存储的整数），返回自增后的值；键不存在则从 0 自增到 1
+     */
+    public long incr(String key) {
+        return stringRedisTemplate.opsForValue().increment(key);
+    }
+
+    /**
+     * 获取键的剩余过期时间（秒），-1 表示无过期时间，-2 表示键不存在
+     */
+    public long getExpire(String key) {
+        return stringRedisTemplate.getExpire(key, TimeUnit.SECONDS);
+    }
+
 }

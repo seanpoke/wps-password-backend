@@ -25,9 +25,12 @@ services:
       - TZ=Asia/Shanghai
       # 环境连不到 LDAP 时禁用 Actuator 的 LDAP 健康探测，避免 health 被置为 DOWN(503)
       - MANAGEMENT_HEALTH_LDAP_ENABLED=false
+      # 客户端版本安装包落盘目录（非 root 容器写入 bind mount）
+      - VERSION_FILE_DIR=/app/versionFile
     volumes:
       - ./logs:/app/logs
       - ./passwordLog:/app/passwordLog
+      - ./versionFile:/app/versionFile
       - /etc/localtime:/etc/localtime:ro
     networks:
       - wps_network
@@ -45,10 +48,11 @@ services:
   fix-perms:
     image: alpine:latest
     user: "0:0"
-    command: ["sh", "-c", "chmod -R a+rwX /data/logs /data/passwordLog && echo '[fix-perms] done'"]
+    command: ["sh", "-c", "chmod -R a+rwX /data/logs /data/passwordLog /data/versionFile && echo '[fix-perms] done'"]
     volumes:
       - ./logs:/data/logs
       - ./passwordLog:/data/passwordLog
+      - ./versionFile:/data/versionFile
     networks:
       - wps_network
     restart: "no"
