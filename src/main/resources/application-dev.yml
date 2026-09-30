@@ -2,6 +2,13 @@ server:
   port: 8081
 
 spring:
+  # 本地开发：上传大小限制（与生产一致，避免本地能传生产报错）
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 500MB
+      max-request-size: 600MB
+
   datasource:
     url: jdbc:mysql://${MYSQL_HOST:117.72.183.119}:${MYSQL_PORT:3316}/doc_auth_system?useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&useSSL=false&serverTimezone=Asia/Shanghai&maxAllowedPacket=10485760&allowPublicKeyRetrieval=true
     username: ${MYSQL_USER:testuser}
@@ -46,3 +53,9 @@ springdoc:
     path: /swagger-ui.html
     tags-sorter: alpha
     operations-sorter: alpha
+
+# 本地开发：安装包落盘到项目根 versionFile/（与 prod 用同一默认相对路径）
+app:
+  version:
+    file-dir: ./versionFile
+    public-base-url:

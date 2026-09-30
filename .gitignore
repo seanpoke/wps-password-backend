@@ -40,6 +40,9 @@ dev-docs/
 # 密码日志
 passwordLog/
 
+# 客户端版本安装包（部署运行时上传/放置，非源码）
+versionFile/
+
 # 临时文件
 *.tmp
 *.bak

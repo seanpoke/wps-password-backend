@@ -8,8 +8,16 @@ import com.docauth.repository.AppVersionRepository;
 import com.docauth.util.VersionUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -27,11 +35,24 @@ import java.util.stream.Collectors;
 @Service
 public class AppVersionService {
 
-    private static final Set<String> SUPPORTED_PLATFORMS = Set.of("win", "android", "mac", "ios");
+    private static final Set<String> SUPPORTED_PLATFORMS = Set.of("win", "android");
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     @Autowired
     private AppVersionRepository appVersionRepository;
+
+    /** 下载地址公网前缀（见 application.yml 的 app.version.public-base-url） */
+    @Value("${app.version.public-base-url:}")
+    private String publicBaseUrl;
+
+    /** 客户端版本安装包落盘目录（见 application.yml 的 app.version.file-dir） */
+    @Value("${app.version.file-dir:./versionFile}")
+    private String versionFileDir;
+
+    /** 各平台允许的安装包扩展名（防任意文件上传）：win 仅 zip，android 仅 apk */
+    private static final Map<String, Set<String>> PLATFORM_ALLOWED_EXT = Map.of(
+            "win", Set.of(".zip"),
+            "android", Set.of(".apk"));
 
     /**
      * 客户端版本检查（免 token）：按 platform + 当前版本判定更新类型
@@ -65,7 +86,7 @@ public class AppVersionService {
         resp.setLatestVersion(latest.getVersion());
         resp.setMinVersion(min == null ? null : min.getVersion());
         resp.setUpdateType(updateType);
-        resp.setDownloadUrl(latest.getDownloadUrl());
+        resp.setDownloadUrl(resolveDownloadUrl(latest.getDownloadUrl()));
         resp.setChangelog(latest.getChangelog());
         resp.setReleaseTime(latest.getReleaseTime() == null ? null : latest.getReleaseTime().format(FORMATTER));
         return resp;
@@ -105,6 +126,15 @@ public class AppVersionService {
                     return dto;
                 })
                 .collect(Collectors.toList());
+
+        // 按版本号降序（语义化比较：1.10.0 > 1.2.0）；跨平台查询时先按平台分组
+        dtos.sort((a, b) -> {
+            if (!singlePlatform) {
+                int c = a.getPlatform().compareTo(b.getPlatform());
+                if (c != 0) return c;
+            }
+            return VersionUtil.compare(b.getVersion(), a.getVersion());
+        });
 
         // 状态汇总（不受状态筛选影响）
         Map<String, Long> counts = new HashMap<>();
@@ -261,9 +291,78 @@ public class AppVersionService {
         dto.setDownloadUrl(av.getDownloadUrl());
         dto.setChangelog(av.getChangelog());
         dto.setReleaseTime(av.getReleaseTime() == null ? null : av.getReleaseTime().format(FORMATTER));
+        dto.setUpdateTime(av.getUpdateTime() == null ? null : av.getUpdateTime().format(FORMATTER));
         dto.setIsMin(av.getIsMin());
         dto.setIsLatest(av.getIsLatest());
         dto.setStatus(av.getStatus());
         return dto;
+    }
+
+    /**
+     * 上传并保存版本安装包：文件名按 PasswordManager-{version}{ext} 命名，落盘到 versionFileDir，
+     * 返回可填入 downloadUrl 的相对路径（如 /downloads/PasswordManager-1.0.2.apk）。仅允许白名单扩展名。
+     */
+    public String storePackage(String platform, String version, MultipartFile file) {
+        validatePlatform(platform);
+        if (!VersionUtil.isValid(version)) {
+            throw new RuntimeException("版本号格式不合法(应为 1 / 1.2 / 1.2.3)");
+        }
+        if (file == null || file.isEmpty()) {
+            throw new RuntimeException("上传文件为空");
+        }
+        String ext = extractExt(file.getOriginalFilename());
+        String plat = platform.trim().toLowerCase();
+        Set<String> allowedExt = PLATFORM_ALLOWED_EXT.getOrDefault(plat, Set.of(".zip", ".apk"));
+        if (!allowedExt.contains(ext)) {
+            throw new RuntimeException("平台 " + plat + " 不支持安装包类型: " + ext
+                    + "，该平台允许: " + String.join(" ", allowedExt));
+        }
+        String dir = StringUtils.trimTrailingCharacter(versionFileDir, '/');
+        try {
+            Files.createDirectories(Paths.get(dir));
+            String filename = "PasswordManager-" + version.trim() + ext;
+            Path target = Paths.get(dir, filename).normalize();
+            Path base = Paths.get(dir).normalize();
+            if (!target.startsWith(base)) {
+                throw new RuntimeException("非法文件路径");
+            }
+            Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+            log.info("[AppVersionService] 安装包已保存: {}/{}", dir, filename);
+            return "/downloads/" + filename;
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("安装包保存失败: " + e.getMessage(), e);
+        }
+    }
+
+    /** 提取扩展名（兼容 .tar.gz） */
+    private String extractExt(String name) {
+        if (name == null) return "";
+        String lower = name.toLowerCase();
+        if (lower.endsWith(".tar.gz")) {
+            return ".tar.gz";
+        }
+        int idx = lower.lastIndexOf('.');
+        return idx < 0 ? "" : lower.substring(idx);
+    }
+
+    /**
+     * 解析下载地址：已是完整 http(s) 链接则原样返回；
+     * 否则视为相对路径（如 /downloads/win-1.0.2.exe），拼上公网前缀（若配置）。
+     */
+    private String resolveDownloadUrl(String url) {
+        if (url == null || url.isEmpty()) {
+            return url;
+        }
+        if (url.startsWith("http://") || url.startsWith("https://")) {
+            return url;
+        }
+        if (publicBaseUrl == null || publicBaseUrl.isEmpty()) {
+            return url;
+        }
+        String base = publicBaseUrl.endsWith("/") ? publicBaseUrl : publicBaseUrl + "/";
+        String path = url.startsWith("/") ? url.substring(1) : url;
+        return base + path;
     }
 }

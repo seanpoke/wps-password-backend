@@ -4,10 +4,16 @@ import com.docauth.interceptor.TokenInterceptor;
 import com.docauth.service.ConfigService;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
@@ -18,12 +24,34 @@ public class WebMvcConfig implements WebMvcConfigurer {
     @Autowired
     private ConfigService configService;
 
+    /** 客户端版本安装包落盘目录（见 application.yml 的 app.version.file-dir） */
+    @Value("${app.version.file-dir:./versionFile}")
+    private String versionFileDir;
+
     /**
      * 应用启动时加载系统配置
      */
     @PostConstruct
     public void init() {
         configService.loadSysConfig();
+    }
+
+    /**
+     * 客户端版本安装包静态下载映射：/downloads/** 对应 file:{versionFileDir}/
+     * 文件由管理员上传/放置到该目录后，即可通过 /downloads/{platform}-{version}{ext} 下载。
+     */
+    @Override
+    public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        String dir = StringUtils.trimTrailingCharacter(versionFileDir, '/');
+        try {
+            Files.createDirectories(Path.of(dir));
+        } catch (Exception e) {
+            // 目录创建失败不阻断启动，仅记录；真正写入时再报错
+            org.slf4j.LoggerFactory.getLogger(WebMvcConfig.class)
+                    .warn("[WebMvcConfig] 版本安装包目录创建失败: {}", dir, e);
+        }
+        registry.addResourceHandler("/downloads/**")
+                .addResourceLocations("file:" + dir + "/");
     }
 
     @Override
@@ -47,6 +75,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
         excludes.add("/");
         excludes.add("/index.html");
         excludes.add("/assets/**");
+        // 版本安装包静态下载（免鉴权，匿名可访问）
+        excludes.add("/downloads/**");
 
         // 注册Token拦截器，对所有请求进行拦截（除了排除的路径）
         registry.addInterceptor(tokenInterceptor)

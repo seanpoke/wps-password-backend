@@ -57,7 +57,7 @@
               <th style="width: 130px">版本号</th>
               <th style="width: 110px">下载地址</th>
               <th>更新说明</th>
-              <th style="width: 140px">发布时间</th>
+              <th style="width: 140px">修改时间</th>
               <th style="width: 260px">操作</th>
             </tr>
           </thead>
@@ -82,7 +82,7 @@
                 <span v-else class="dl-muted">—</span>
               </td>
               <td class="desc">{{ row.changelog || '—' }}</td>
-              <td class="time">{{ row.releaseTime || '—' }}</td>
+              <td class="time">{{ row.updateTime || '—' }}</td>
               <td>
                 <div class="ops">
                   <button class="op" @click="openEdit(row)">编辑</button>
@@ -126,20 +126,35 @@
         <el-form-item label="版本号" prop="version">
           <el-input v-model="form.version" placeholder="如 1.2.0" />
         </el-form-item>
-        <el-form-item label="下载地址">
-          <el-input v-model="form.downloadUrl" placeholder="https://..." />
+        <el-form-item label="安装包" :required="true">
+          <div v-if="form.downloadUrl" class="pkg-card" :class="{ dragging: dragOver }"
+            @dragover.prevent="dragOver = true"
+            @dragleave.prevent="dragOver = false"
+            @drop.prevent="onDrop">
+            <div class="pkg-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+            </div>
+            <div class="pkg-info">
+              <div class="pkg-name">{{ pkgFileName }}</div>
+              <div class="pkg-path">{{ form.downloadUrl }}</div>
+            </div>
+            <div class="pkg-ops">
+              <button type="button" class="pkg-op" :disabled="uploading" @click="triggerUpload">{{ uploading ? '上传中…' : '重新上传' }}</button>
+              <button type="button" class="pkg-op danger" :disabled="uploading" @click="removePackage">移除</button>
+            </div>
+          </div>
+          <div v-else class="pkg-empty" :class="{ uploading, dragging: dragOver }"
+            @click="!uploading && triggerUpload()"
+            @dragover.prevent="dragOver = true"
+            @dragleave.prevent="dragOver = false"
+            @drop.prevent="onDrop">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+            <span>{{ uploading ? '上传中…' : '点击或拖拽安装包到此处上传' }}</span>
+            <span class="pkg-hint">{{ form.platform === 'win' ? 'Windows 平台仅支持 .zip' : form.platform === 'android' ? 'Android 平台仅支持 .apk' : '请先选择平台' }}，上传后自动生成下载地址</span>
+          </div>
         </el-form-item>
         <el-form-item label="更新说明">
           <el-input v-model="form.changelog" type="textarea" :rows="2" placeholder="本次更新内容" />
-        </el-form-item>
-        <el-form-item label="发布时间">
-          <el-date-picker
-            v-model="form.releaseTime"
-            type="datetime"
-            value-format="YYYY-MM-DD HH:mm:ss"
-            format="YYYY-MM-DD HH:mm:ss"
-            placeholder="选择发布时间"
-            style="width: 100%" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -157,20 +172,35 @@
         <el-form-item label="版本号">
           <el-input :model-value="form.version" disabled />
         </el-form-item>
-        <el-form-item label="下载地址">
-          <el-input v-model="form.downloadUrl" placeholder="https://..." />
+        <el-form-item label="安装包" :required="true">
+          <div v-if="form.downloadUrl" class="pkg-card" :class="{ dragging: dragOver }"
+            @dragover.prevent="dragOver = true"
+            @dragleave.prevent="dragOver = false"
+            @drop.prevent="onDrop">
+            <div class="pkg-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+            </div>
+            <div class="pkg-info">
+              <div class="pkg-name">{{ pkgFileName }}</div>
+              <div class="pkg-path">{{ form.downloadUrl }}</div>
+            </div>
+            <div class="pkg-ops">
+              <button type="button" class="pkg-op" :disabled="uploading" @click="triggerUpload">{{ uploading ? '上传中…' : '重新上传' }}</button>
+              <button type="button" class="pkg-op danger" :disabled="uploading" @click="removePackage">移除</button>
+            </div>
+          </div>
+          <div v-else class="pkg-empty" :class="{ uploading, dragging: dragOver }"
+            @click="!uploading && triggerUpload()"
+            @dragover.prevent="dragOver = true"
+            @dragleave.prevent="dragOver = false"
+            @drop.prevent="onDrop">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+            <span>{{ uploading ? '上传中…' : '点击或拖拽安装包到此处上传' }}</span>
+            <span class="pkg-hint">{{ form.platform === 'win' ? 'Windows 平台仅支持 .zip' : form.platform === 'android' ? 'Android 平台仅支持 .apk' : '请先选择平台' }}，上传后自动生成下载地址</span>
+          </div>
         </el-form-item>
         <el-form-item label="更新说明">
           <el-input v-model="form.changelog" type="textarea" :rows="2" placeholder="本次更新内容" />
-        </el-form-item>
-        <el-form-item label="发布时间">
-          <el-date-picker
-            v-model="form.releaseTime"
-            type="datetime"
-            value-format="YYYY-MM-DD HH:mm:ss"
-            format="YYYY-MM-DD HH:mm:ss"
-            placeholder="选择发布时间"
-            style="width: 100%" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -178,19 +208,25 @@
         <el-button type="primary" :loading="saving" @click="saveEdit">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 隐藏的文件选择器：两个对话框共用 -->
+    <input
+      ref="fileInput"
+      type="file"
+      :accept="acceptExts"
+      style="display: none"
+      @change="onFileChange" />
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { listVersion, createVersion, updateVersion, setMinVersion, setLatestVersion, deleteVersion } from '@/api/version'
+import { listVersion, createVersion, updateVersion, setMinVersion, setLatestVersion, deleteVersion, uploadVersionPackage } from '@/api/version'
 
 const PLATFORMS = [
   { value: 'win', label: 'Windows' },
-  { value: 'android', label: 'Android' },
-  { value: 'mac', label: 'macOS' },
-  { value: 'ios', label: 'iOS' }
+  { value: 'android', label: 'Android' }
 ]
 const platformLabel = (p) => (PLATFORMS.find((x) => x.value === p) || {}).label || p
 
@@ -202,8 +238,12 @@ const addVisible = ref(false)
 const editVisible = ref(false)
 const editId = ref(null)
 const formRef = ref(null)
+const fileInput = ref(null)
+const uploading = ref(false)
+const uploadFileName = ref('')
+const dragOver = ref(false)
 const form = reactive({
-  platform: '', version: '', downloadUrl: '', changelog: '', releaseTime: ''
+  platform: '', version: '', downloadUrl: '', changelog: ''
 })
 const rules = {
   platform: [{ required: true, message: '请选择平台', trigger: 'change' }],
@@ -224,6 +264,35 @@ function validateVersion(v) {
 }
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
+
+const pkgFileName = computed(() => {
+  const url = form.downloadUrl || ''
+  if (!url) return ''
+  try {
+    const path = /^https?:\/\//i.test(url) ? new URL(url).pathname : url
+    return decodeURIComponent(path.split('/').filter(Boolean).pop() || url)
+  } catch {
+    return url
+  }
+})
+
+function removePackage() {
+  form.downloadUrl = ''
+  uploadFileName.value = ''
+}
+
+const acceptExts = computed(() => {
+  if (form.platform === 'win') return '.zip'
+  if (form.platform === 'android') return '.apk'
+  return '.zip,.apk'
+})
+
+function extAllowed(file) {
+  const name = (file.name || '').toLowerCase()
+  if (form.platform === 'win') return name.endsWith('.zip')
+  if (form.platform === 'android') return name.endsWith('.apk')
+  return name.endsWith('.zip') || name.endsWith('.apk')
+}
 
 function badgeClass(st) {
   return {
@@ -287,7 +356,7 @@ function resetForm() {
   form.version = ''
   form.downloadUrl = ''
   form.changelog = ''
-  form.releaseTime = ''
+  uploadFileName.value = ''
   formRef.value?.clearValidate?.()
 }
 
@@ -297,13 +366,63 @@ function openAdd() {
   addVisible.value = true
 }
 
+function triggerUpload() {
+  fileInput.value?.click()
+}
+
+async function uploadFile(file, input) {
+  if (!form.platform) {
+    ElMessage.warning('请先选择平台')
+    if (input) input.value = ''
+    return
+  }
+  if (!validateVersion(form.version)) {
+    ElMessage.warning('请先填写正确的版本号（如 1.2.0）')
+    if (input) input.value = ''
+    return
+  }
+  if (!extAllowed(file)) {
+    ElMessage.warning(form.platform === 'win' ? 'Windows 平台仅支持上传 .zip 安装包' : 'Android 平台仅支持上传 .apk 安装包')
+    if (input) input.value = ''
+    return
+  }
+  const fd = new FormData()
+  fd.append('platform', form.platform)
+  fd.append('version', form.version)
+  fd.append('file', file)
+  uploading.value = true
+  try {
+    const res = await uploadVersionPackage(fd)
+    form.downloadUrl = res.data // 形如 /downloads/win-1.0.2.exe
+    uploadFileName.value = file.name
+    ElMessage.success('安装包已上传，下载地址已自动填充')
+  } catch (e) {} finally {
+    uploading.value = false
+    dragOver.value = false
+    if (input) input.value = '' // 允许重复选择同一文件
+  }
+}
+
+function onFileChange(e) {
+  const input = e.target
+  const file = input.files && input.files[0]
+  if (file) uploadFile(file, input)
+}
+
+function onDrop(e) {
+  dragOver.value = false
+  if (uploading.value) return
+  const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]
+  if (!file) return
+  uploadFile(file)
+}
+
 function openEdit(row) {
   editId.value = row.id
   form.platform = row.platform
   form.version = row.version
   form.downloadUrl = row.downloadUrl || ''
   form.changelog = row.changelog || ''
-  form.releaseTime = row.releaseTime || ''
   editVisible.value = true
 }
 
@@ -315,8 +434,7 @@ async function save() {
     platform: form.platform,
     version: form.version,
     downloadUrl: form.downloadUrl || null,
-    changelog: form.changelog || null,
-    releaseTime: form.releaseTime || null
+    changelog: form.changelog || null
   }
   saving.value = true
   try {
@@ -332,8 +450,7 @@ async function save() {
 async function saveEdit() {
   const payload = {
     downloadUrl: form.downloadUrl || null,
-    changelog: form.changelog || null,
-    releaseTime: form.releaseTime || null
+    changelog: form.changelog || null
   }
   saving.value = true
   try {
@@ -392,6 +509,30 @@ onMounted(loadList)
 .btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 4px; font-size: 13px; cursor: pointer; border: 1px solid transparent; }
 .btn-primary { background: #2E5CE6; color: #fff; font-weight: 500; }
 .btn-primary:hover { background: #2449BF; }
+
+.pkg-card { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; box-sizing: border-box; padding: 12px 14px; border: 1px solid #E5E7EB; border-radius: 8px; background: #FAFBFC; overflow: hidden; }
+.pkg-icon { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 8px; background: #EEF2FF; color: #2E5CE6; flex-shrink: 0; }
+.pkg-info { flex: 1; min-width: 0; }
+.pkg-name { font-size: 14px; font-weight: 600; color: #1F2329; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pkg-path { font-size: 12px; color: #98A2B3; font-family: Consolas, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+.pkg-ops { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.pkg-op { padding: 4px 8px; border-radius: 4px; font-size: 13px; color: #2E5CE6; cursor: pointer; background: none; border: none; transition: background .12s; white-space: nowrap; }
+.pkg-op:hover:not(:disabled) { background: #EEF2FF; }
+.pkg-op:disabled { color: #C0C4CC; cursor: not-allowed; }
+.pkg-op.danger { color: #D92D20; }
+.pkg-op.danger:hover:not(:disabled) { background: #FEF3F2; }
+
+:deep(.el-form-item__content) { min-width: 0; }
+
+.pkg-empty { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; min-width: 0; box-sizing: border-box; padding: 22px 14px; border: 1px dashed #C6CBD4; border-radius: 8px; background: #FAFBFC; color: #4E5969; font-size: 14px; cursor: pointer; transition: all .15s; }
+.pkg-empty:hover { border-color: #2E5CE6; color: #2E5CE6; background: #EEF2FF; }
+.pkg-empty.uploading { cursor: not-allowed; color: #98A2B3; }
+.pkg-empty svg { color: #98A2B3; }
+.pkg-empty:hover svg { color: #2E5CE6; }
+.pkg-empty.dragging { border-color: #2E5CE6; border-style: solid; background: #EEF2FF; color: #2E5CE6; }
+.pkg-empty.dragging svg { color: #2E5CE6; }
+.pkg-card.dragging { border-color: #2E5CE6; background: #EEF2FF; }
+.pkg-hint { font-size: 12px; color: #98A2B3; }
 
 .info-line { display: flex; align-items: center; gap: 8px; margin: 14px 20px 0; padding: 8px 12px; background: #EEF2FF; border-radius: 4px; color: #4E5969; font-size: 13px; }
 .info-line svg { flex-shrink: 0; color: #2E5CE6; }

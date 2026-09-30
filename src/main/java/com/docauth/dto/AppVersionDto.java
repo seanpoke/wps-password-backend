@@ -13,7 +13,7 @@ public class AppVersionDto {
     @Schema(description = "版本记录ID（更新/标记/删除时使用）", example = "1")
     private Long id;
 
-    @Schema(description = "平台标识: win/android/mac/ios", example = "win", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "平台标识: win/android", example = "win", requiredMode = Schema.RequiredMode.REQUIRED)
     private String platform;
 
     @Schema(description = "版本号，如 1.0.0", example = "1.2.0", requiredMode = Schema.RequiredMode.REQUIRED)
@@ -27,6 +27,9 @@ public class AppVersionDto {
 
     @Schema(description = "发布时间(yyyy-MM-dd HH:mm:ss)", example = "2026-09-20 10:00:00")
     private String releaseTime;
+
+    @Schema(description = "最后修改时间(yyyy-MM-dd HH:mm:ss)，数据库自动维护", example = "2026-09-29 17:30:00")
+    private String updateTime;
 
     @Schema(description = "是否最低支持版本", example = "false")
     private Boolean isMin = false;

@@ -16,6 +16,13 @@ spring:
     resources:
       static-locations: file:./webroot/, classpath:/static/
 
+  # 客户端版本安装包上传大小限制
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 500MB
+      max-request-size: 600MB
+
   datasource:
     url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3316}/doc_auth_system?useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&useSSL=false&serverTimezone=Asia/Shanghai&maxAllowedPacket=10485760&allowPublicKeyRetrieval=true
     username: ${MYSQL_USER:testuser}
@@ -66,6 +73,15 @@ password:
   log:
     # 日志文件存储目录（相对路径或绝对路径）
     dir: ./passwordLog
+
+# 客户端版本安装包存储配置
+app:
+  version:
+    # 安装包落盘目录（相对路径或绝对路径）；环境变量 VERSION_FILE_DIR 可覆盖（Docker 内设为 /app/versionFile）
+    file-dir: ${VERSION_FILE_DIR:./versionFile}
+    # 下载地址公网前缀；若 downloadUrl 存相对路径（如 /downloads/win-1.0.2.exe），
+    # /config/version/check 返回时自动拼此前缀。留空则原样返回。
+    public-base-url: ${VERSION_PUBLIC_BASE_URL:}
 
 # Actuator 健康检查：禁用 LDAP 指示器
 # classpath 上存在 spring-ldap 时，Actuator 自动注册 LdapHealthIndicator，

@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * 客户端版本管理接口
@@ -68,6 +69,27 @@ public class VersionController {
             @RequestParam(required = false, defaultValue = "10") int size) {
         assertAdmin();
         return ApiResponse.success(appVersionService.pageVersions(platform, status, page, size));
+    }
+
+    /**
+     * 上传版本安装包（admin）：落盘到版本目录，返回可填入 downloadUrl 的相对路径 /downloads/{platform}-{version}{ext}
+     */
+    @PostMapping("/upload")
+    @Operation(summary = "上传版本安装包",
+            description = "admin 上传安装包到版本目录，返回相对下载路径（如 /downloads/win-1.0.2.exe）")
+    public ApiResponse<String> upload(
+            @RequestParam String platform,
+            @RequestParam String version,
+            @RequestParam MultipartFile file) {
+        assertAdmin();
+        try {
+            return ApiResponse.success(appVersionService.storePackage(platform, version, file));
+        } catch (RuntimeException e) {
+            return ApiResponse.error(400, e.getMessage());
+        } catch (Exception e) {
+            log.error("[version/upload] 异常: {}", e.getMessage(), e);
+            return ApiResponse.error(500, "上传失败：" + e.getMessage());
+        }
     }
 
     /**
