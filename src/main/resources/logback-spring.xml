@@ -5,8 +5,8 @@
     <property name="LOG_HOME" value="./logs"/>
     <!-- 定义应用名称 -->
     <property name="APP_NAME" value="wps-password-backend"/>
-    <!-- 定义密码审计日志存储路径 -->
-    <property name="PASSWORD_LOG_HOME" value="./passwordLog"/>
+    <!-- 定义密码审计日志存储路径（与 Spring 配置 password.log.dir 共享，默认值 ./passwordLog） -->
+    <springProperty name="PASSWORD_LOG_HOME" source="password.log.dir" defaultValue="./passwordLog"/>
     
     <!-- 控制台输出配置 -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
@@ -101,13 +101,11 @@
             <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} | %msg%n</pattern>
             <charset>UTF-8</charset>
         </encoder>
-        <!-- 按月滚动策略 -->
-        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <!-- 按月生成日志文件，格式：yyyy_MM.log（修正：移除 , aux，使用标准月份推导语法） -->
-            <fileNamePattern>${PASSWORD_LOG_HOME}/%d{yyyy_MM}.log</fileNamePattern>
-            <!-- 保留12个月的日志 -->
-            <maxHistory>12</maxHistory>
-            <!-- 所有密码审计日志文件总大小上限50GB -->
+        <!-- 按大小(100MB) + 按天 滚动：文件名带日期+序号，避免单月文件过大 -->
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${PASSWORD_LOG_HOME}/%d{yyyy_MM_dd}.%i.log</fileNamePattern>
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>90</maxHistory>
             <totalSizeCap>50GB</totalSizeCap>
         </rollingPolicy>
         <!-- 立即刷新到磁盘 -->

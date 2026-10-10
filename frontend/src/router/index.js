@@ -8,6 +8,7 @@ import Role from '@/views/Role.vue'
 import Doc from '@/views/Doc.vue'
 import LdapSync from '@/views/LdapSync.vue'
 import Version from '@/views/Version.vue'
+import PasswordAudit from '@/views/PasswordAudit.vue'
 import { getToken } from '@/store/auth'
 
 
@@ -24,7 +25,8 @@ const routes = [
       { path: 'roles', name: 'roles', component: Role, meta: { title: '角色管理' } },
       { path: 'docs', name: 'docs', component: Doc, meta: { title: '文档管理' } },
       { path: 'ldap-sync', name: 'ldap-sync', component: LdapSync, meta: { title: 'LDAP 同步' } },
-      { path: 'versions', name: 'versions', component: Version, meta: { title: '版本管理' } }
+      { path: 'versions', name: 'versions', component: Version, meta: { title: '版本管理' } },
+      { path: 'audit', name: 'audit', component: PasswordAudit, meta: { title: '密码审计' } }
     ]
   }
 ]
