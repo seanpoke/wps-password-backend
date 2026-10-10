@@ -73,6 +73,13 @@ password:
   log:
     # 日志文件存储目录（相对路径或绝对路径）
     dir: ./passwordLog
+  audit:
+    # 可选：ripgrep(rg) 可执行文件绝对路径。
+    # 留空则自动探测：先查 PATH，再查 jar 同目录的 rg / rg.exe。
+    # 提供 rg 后，密码审计查询改用 rg 做文件级过滤+计数（C/mmap），大数据量下性能远优于逐行读取。
+    # Windows 服务端请将 rg.exe 放到 PATH 或 jar 同目录；Linux 通常为 /usr/bin/rg。
+    rg:
+      path:
 
 # 客户端版本安装包存储配置
 app:

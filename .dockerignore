@@ -1,64 +1,25 @@
-# Git
+# 版本控制与本地环境
 .git
 .gitignore
+.github
 
-# IDE
-.idea
-*.iml
-.vscode
-.settings
-.classpath
-.project
-.target
+# 构建产物
+target
+**/target
+node_modules
+**/node_modules
+frontend/dist
+frontend/node_modules
 
-# Maven
-target/
-!.mvn/wrapper/maven-wrapper.jar
-pom.xml.tag
-pom.xml.releaseBackup
-pom.xml.versionsBackup
-pom.xml.next
-release.properties
-dependency-reduced-pom.xml
-buildNumber.properties
-.mvn/timing.properties
-
-# Gradle
-.gradle
-build/
-
-# Logs
-logs/
+# 本地运行/数据，禁止带进镜像
+passwordLog
+logs
+versionFile
 *.log
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Docker
-Dockerfile
-docker-compose.yml
-.dockerignore
-
-# Documentation
-*.md
-dev-docs/
-src/main/doc/
-
-# Test
-test-output/
-
-# 前端依赖与构建产物（容器内由 node 阶段重新构建，无需纳入上下文）
-frontend/node_modules/
-frontend/dist/
-frontend/.vite/
-
-# 前端构建输出（由 Dockerfile 内 node 阶段生成，避免携带本地陈旧副本）
-webroot/
-
-# 运行时临时目录（部署脚本/日志/密码日志，非源码）
-tmp/
-passwordLog/
-
-# 会话/私有记忆（CodeBuddy 工作记忆，非项目源码）
-.codebuddy/
+# IDE / 临时
+.idea
+.vscode
+*.iml
+tmp
+*.tmp

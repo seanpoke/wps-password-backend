@@ -21,6 +21,11 @@ WORKDIR /app
 LABEL maintainer="Sean"
 LABEL description="wps插件后端服务（含前端静态资源）"
 
+# 安装 ripgrep：密码审计查询服务(PasswordAuditQueryService)会探测 /usr/bin/rg 走快路径，
+# 缺失则降级为 Java 逐行读取(大数据量下性能差)。Alpine 通过 apk 提供 ripgrep 包。
+RUN apk add --no-cache ripgrep \
+    && rg --version | head -n1
+
 # 创建非 root 用户运行应用（安全最佳实践）
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
