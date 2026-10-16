@@ -105,7 +105,7 @@
               </ul>
             </div>
             <div class="card">
-              <h3 class="card-title">安装步骤</h3>
+              <h3 class="card-title">操作步骤</h3>
               <ol class="step-list">
                 <li v-for="(s, i) in cur.steps" :key="i">{{ s }}</li>
               </ol>
@@ -181,7 +181,7 @@ const STATIC = {
     size: '86.4 MB',
     reqShort: 'Windows 10 及以上（64 位）',
     requirements: ['Windows 10 及以上（64 位）', '4 GB 及以上内存', '约 200 MB 可用磁盘空间'],
-    steps: ['点击上方按钮下载安装包', '运行安装包，按提示完成安装', '首次打开时设置主密码，即可开始使用'],
+    steps: ['点击上方「下载 Windows 版」按钮，获取软件压缩包', '将压缩包解压到本机任意文件夹', '在解压后的文件夹中找到 PasswordManager.exe，双击运行即可'],
     fallbackNotes: ['全新视觉设计，主界面更清爽，常用操作一步直达', '加密引擎升级，大文档加解密速度显著提升', '新增密码生成器，可一键生成高强度随机密码', '修复了若干已知问题，整体稳定性提升']
   },
   android: {
