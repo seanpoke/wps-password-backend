@@ -47,7 +47,7 @@ async function onSubmit() {
     setToken(d.token)
     setUser({ account: d.account, name: d.name, role: d.role, source: d.source })
     ElMessage.success('登录成功')
-    const redirect = route.query.redirect || '/dashboard'
+    const redirect = route.query.redirect || '/backend/dashboard'
     router.push(redirect)
   } finally {
     loading.value = false

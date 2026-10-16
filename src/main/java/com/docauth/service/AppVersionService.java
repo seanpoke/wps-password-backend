@@ -2,6 +2,7 @@ package com.docauth.service;
 
 import com.docauth.dto.AppVersionDto;
 import com.docauth.dto.VersionCheckResponse;
+import com.docauth.dto.VersionLatestVo;
 import com.docauth.dto.VersionPageVo;
 import com.docauth.entity.AppVersion;
 import com.docauth.repository.AppVersionRepository;
@@ -90,6 +91,26 @@ public class AppVersionService {
         resp.setChangelog(latest.getChangelog());
         resp.setReleaseTime(latest.getReleaseTime() == null ? null : latest.getReleaseTime().format(FORMATTER));
         return resp;
+    }
+
+    /**
+     * 获取平台最新版本（免 token）：供客户端下载页展示最新版本号/下载地址/更新说明。
+     * 复用 checkVersion 的最新版本定位与下载地址解析逻辑，但不做版本比较。
+     */
+    public VersionLatestVo getLatest(String platform) {
+        validatePlatform(platform);
+        AppVersion latest = appVersionRepository.findByPlatformAndIsLatestTrue(platform)
+                .orElseThrow(() -> new RuntimeException("未配置平台[" + platform + "]的最新版本"));
+        if (latest.getStatus() != null && latest.getStatus() != 1) {
+            throw new RuntimeException("平台[" + platform + "]最新版本已停用");
+        }
+        VersionLatestVo vo = new VersionLatestVo();
+        vo.setPlatform(latest.getPlatform());
+        vo.setVersion(latest.getVersion());
+        vo.setDownloadUrl(resolveDownloadUrl(latest.getDownloadUrl()));
+        vo.setChangelog(latest.getChangelog());
+        vo.setReleaseTime(latest.getReleaseTime() == null ? null : latest.getReleaseTime().format(FORMATTER));
+        return vo;
     }
 
     /**

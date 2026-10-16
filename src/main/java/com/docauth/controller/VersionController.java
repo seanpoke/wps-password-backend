@@ -3,6 +3,7 @@ package com.docauth.controller;
 import com.docauth.dto.ApiResponse;
 import com.docauth.dto.AppVersionDto;
 import com.docauth.dto.VersionCheckResponse;
+import com.docauth.dto.VersionLatestVo;
 import com.docauth.dto.VersionPageVo;
 import com.docauth.service.AppVersionService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -52,6 +53,23 @@ public class VersionController {
         } catch (Exception e) {
             log.error("[version/check] 异常: {}", e.getMessage(), e);
             return ApiResponse.error(500, "版本检查失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取平台最新版本（免 token）：供客户端下载页展示最新版本号/下载地址/更新说明。
+     * 位于 /config/** 匿名白名单内，且不调用 assertAdmin，故匿名可访问。
+     */
+    @GetMapping("/latest")
+    @Operation(summary = "获取平台最新版本", description = "按平台返回最新版本下载信息（免 token，供下载页使用）")
+    public ApiResponse<VersionLatestVo> latest(@RequestParam String platform) {
+        try {
+            return ApiResponse.success(appVersionService.getLatest(platform));
+        } catch (RuntimeException e) {
+            return ApiResponse.error(400, e.getMessage());
+        } catch (Exception e) {
+            log.error("[version/latest] 异常: {}", e.getMessage(), e);
+            return ApiResponse.error(500, "查询最新版本失败：" + e.getMessage());
         }
     }
 

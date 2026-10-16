@@ -6,14 +6,14 @@
         <span>密码管理后台</span>
       </div>
       <el-menu :default-active="activeMenu" router background-color="#1f2a44" text-color="#cdd" active-text-color="#2b8">
-        <el-menu-item index="/dashboard"><el-icon><DataLine /></el-icon><span>仪表盘</span></el-menu-item>
-        <el-menu-item index="/depts"><el-icon><OfficeBuilding /></el-icon><span>部门管理</span></el-menu-item>
-        <el-menu-item index="/users"><el-icon><User /></el-icon><span>用户管理</span></el-menu-item>
-        <el-menu-item v-if="isAdmin" index="/roles"><el-icon><Stamp /></el-icon><span>角色管理</span></el-menu-item>
-        <el-menu-item v-if="isAdmin" index="/docs"><el-icon><Document /></el-icon><span>文档管理</span></el-menu-item>
-        <el-menu-item v-if="isAdmin" index="/ldap-sync"><el-icon><Switch /></el-icon><span>LDAP 同步</span></el-menu-item>
-        <el-menu-item v-if="isAdmin" index="/versions"><el-icon><Cellphone /></el-icon><span>版本管理</span></el-menu-item>
-        <el-menu-item v-if="isAdmin" index="/audit"><el-icon><Key /></el-icon><span>密码审计</span></el-menu-item>
+        <el-menu-item index="/backend/dashboard"><el-icon><DataLine /></el-icon><span>仪表盘</span></el-menu-item>
+        <el-menu-item index="/backend/depts"><el-icon><OfficeBuilding /></el-icon><span>部门管理</span></el-menu-item>
+        <el-menu-item index="/backend/users"><el-icon><User /></el-icon><span>用户管理</span></el-menu-item>
+        <el-menu-item v-if="isAdmin" index="/backend/roles"><el-icon><Stamp /></el-icon><span>角色管理</span></el-menu-item>
+        <el-menu-item v-if="isAdmin" index="/backend/docs"><el-icon><Document /></el-icon><span>文档管理</span></el-menu-item>
+        <el-menu-item v-if="isAdmin" index="/backend/ldap-sync"><el-icon><Switch /></el-icon><span>LDAP 同步</span></el-menu-item>
+        <el-menu-item v-if="isAdmin" index="/backend/versions"><el-icon><Cellphone /></el-icon><span>版本管理</span></el-menu-item>
+        <el-menu-item v-if="isAdmin" index="/backend/audit"><el-icon><Key /></el-icon><span>密码审计</span></el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>
@@ -65,7 +65,7 @@ async function onCommand(cmd) {
     try { await logout() } catch (e) {}
     clearAuth()
     ElMessage.success('已退出')
-    router.push({ name: 'login' })
+    router.push({ name: 'admin-login' })
   }
 }
 </script>

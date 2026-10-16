@@ -13,9 +13,9 @@
     </el-row>
 
     <el-card shadow="never" class="quick" header="快速操作">
-      <el-button type="primary" :icon="OfficeBuilding" @click="go('/depts')">部门管理</el-button>
-      <el-button type="success" :icon="User" @click="go('/users')">用户管理</el-button>
-      <el-button type="info" :icon="DataLine" @click="go('/ldap-sync')">LDAP 同步</el-button>
+      <el-button type="primary" :icon="OfficeBuilding" @click="go('/backend/depts')">部门管理</el-button>
+      <el-button type="success" :icon="User" @click="go('/backend/users')">用户管理</el-button>
+      <el-button type="info" :icon="DataLine" @click="go('/backend/ldap-sync')">LDAP 同步</el-button>
     </el-card>
   </div>
 </template>

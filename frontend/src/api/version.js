@@ -1,5 +1,10 @@
 import request from '@/utils/request'
 
+/** 获取平台最新版本（免 token，供客户端下载页）：platform=win/android */
+export function getLatestVersion(platform) {
+  return request.get('/config/version/latest', { params: { platform } })
+}
+
 /** 获取版本列表（admin，分页）：platform 可选；status 可选筛选派生状态 */
 export function listVersion(params) {
   return request.get('/config/version', { params })

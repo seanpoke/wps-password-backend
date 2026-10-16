@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import { getToken, clearAuth } from '@/store/auth'
+import { getUserToken, clearUserAuth } from '@/store/userAuth'
 import router from '@/router'
 
 const request = axios.create({
@@ -9,7 +10,8 @@ const request = axios.create({
 })
 
 request.interceptors.request.use((config) => {
-  const token = getToken()
+  // 管理员 token 优先，其次用户 token；保证用户侧请求也携带用户令牌
+  const token = getToken() || getUserToken()
   if (token) {
     config.headers['token'] = token
   }
@@ -31,9 +33,17 @@ request.interceptors.response.use(
   (error) => {
     const status = error.response ? error.response.status : 0
     if (status === 401) {
-      ElMessage.error('登录已过期，请重新登录')
-      clearAuth()
-      router.push({ name: 'login' })
+      // 依据当前所在区域分流：用户侧(/users)跳用户登录，其余跳后台登录
+      const onUserSide = location.hash.indexOf('#/users') === 0
+      if (onUserSide) {
+        clearUserAuth()
+        ElMessage.error('登录已过期，请重新登录')
+        router.push({ name: 'user-login' })
+      } else {
+        ElMessage.error('登录已过期，请重新登录')
+        clearAuth()
+        router.push({ name: 'admin-login' })
+      }
     } else if (status === 403) {
       ElMessage.error('无权限访问')
     } else {
