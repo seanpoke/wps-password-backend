@@ -54,7 +54,8 @@ springdoc:
     tags-sorter: alpha
     operations-sorter: alpha
 
-# 本地开发：安装包落盘到项目根 versionFile/（与 prod 用同一默认相对路径）
+# 本地开发：安装包落盘到项目根 versionFile/（与 prod 用同一默认相对路径）；
+# 暂存包落在 versionFile/tmp/，该子目录被 /downloads/tmp/** 资源解析器拒绝访问
 app:
   version:
     file-dir: ./versionFile

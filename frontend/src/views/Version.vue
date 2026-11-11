@@ -116,7 +116,7 @@
     </div>
 
     <!-- 新增对话框 -->
-    <el-dialog v-model="addVisible" title="新增版本" width="560px" @closed="resetForm">
+    <el-dialog v-model="addVisible" title="新增版本" width="560px" @closed="onDialogClosed">
       <el-form :model="form" label-width="100px" :rules="rules" ref="formRef">
         <el-form-item label="平台" prop="platform">
           <el-select v-model="form.platform" placeholder="请选择平台" style="width: 100%">
@@ -127,7 +127,7 @@
           <el-input v-model="form.version" placeholder="如 1.2.0" />
         </el-form-item>
         <el-form-item label="安装包" :required="true">
-          <div v-if="form.downloadUrl" class="pkg-card" :class="{ dragging: dragOver }"
+          <div v-if="hasPackage" class="pkg-card" :class="{ dragging: dragOver }"
             @dragover.prevent="dragOver = true"
             @dragleave.prevent="dragOver = false"
             @drop.prevent="onDrop">
@@ -135,8 +135,8 @@
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
             </div>
             <div class="pkg-info">
-              <div class="pkg-name">{{ pkgFileName }}</div>
-              <div class="pkg-path">{{ form.downloadUrl }}</div>
+              <div class="pkg-name">{{ pkgFileName }}<span v-if="pending" class="pkg-pending">待保存生效</span></div>
+              <div class="pkg-path">{{ pkgPathText }}</div>
             </div>
             <div class="pkg-ops">
               <button type="button" class="pkg-op" :disabled="uploading" @click="triggerUpload">{{ uploading ? '上传中…' : '重新上传' }}</button>
@@ -150,7 +150,7 @@
             @drop.prevent="onDrop">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
             <span>{{ uploading ? '上传中…' : '点击或拖拽安装包到此处上传' }}</span>
-            <span class="pkg-hint">{{ form.platform === 'win' ? 'Windows 平台仅支持 .zip' : form.platform === 'android' ? 'Android 平台仅支持 .apk' : '请先选择平台' }}，上传后自动生成下载地址</span>
+            <span class="pkg-hint">{{ form.platform === 'win' ? 'Windows 平台仅支持 .zip' : form.platform === 'android' ? 'Android 平台仅支持 .apk' : '请先选择平台' }}，上传后暂存，点「保存」才生效</span>
           </div>
         </el-form-item>
         <el-form-item label="更新说明">
@@ -164,7 +164,7 @@
     </el-dialog>
 
     <!-- 编辑对话框 -->
-    <el-dialog v-model="editVisible" title="编辑版本" width="560px" @closed="resetForm">
+    <el-dialog v-model="editVisible" title="编辑版本" width="560px" @closed="onDialogClosed">
       <el-form :model="form" label-width="100px" ref="formRef">
         <el-form-item label="平台">
           <el-input :model-value="platformLabel(form.platform)" disabled />
@@ -173,7 +173,7 @@
           <el-input :model-value="form.version" disabled />
         </el-form-item>
         <el-form-item label="安装包" :required="true">
-          <div v-if="form.downloadUrl" class="pkg-card" :class="{ dragging: dragOver }"
+          <div v-if="hasPackage" class="pkg-card" :class="{ dragging: dragOver }"
             @dragover.prevent="dragOver = true"
             @dragleave.prevent="dragOver = false"
             @drop.prevent="onDrop">
@@ -181,8 +181,8 @@
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
             </div>
             <div class="pkg-info">
-              <div class="pkg-name">{{ pkgFileName }}</div>
-              <div class="pkg-path">{{ form.downloadUrl }}</div>
+              <div class="pkg-name">{{ pkgFileName }}<span v-if="pending" class="pkg-pending">待保存生效</span></div>
+              <div class="pkg-path">{{ pkgPathText }}</div>
             </div>
             <div class="pkg-ops">
               <button type="button" class="pkg-op" :disabled="uploading" @click="triggerUpload">{{ uploading ? '上传中…' : '重新上传' }}</button>
@@ -196,7 +196,7 @@
             @drop.prevent="onDrop">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
             <span>{{ uploading ? '上传中…' : '点击或拖拽安装包到此处上传' }}</span>
-            <span class="pkg-hint">{{ form.platform === 'win' ? 'Windows 平台仅支持 .zip' : form.platform === 'android' ? 'Android 平台仅支持 .apk' : '请先选择平台' }}，上传后自动生成下载地址</span>
+            <span class="pkg-hint">{{ form.platform === 'win' ? 'Windows 平台仅支持 .zip' : form.platform === 'android' ? 'Android 平台仅支持 .apk' : '请先选择平台' }}，上传后暂存，点「保存」才生效</span>
           </div>
         </el-form-item>
         <el-form-item label="更新说明">
@@ -222,7 +222,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { listVersion, createVersion, updateVersion, setMinVersion, setLatestVersion, deleteVersion, uploadVersionPackage } from '@/api/version'
+import { listVersion, createVersion, updateVersion, setMinVersion, setLatestVersion, deleteVersion, uploadVersionPackage, discardVersionPackage } from '@/api/version'
 
 const PLATFORMS = [
   { value: 'win', label: 'Windows' },
@@ -242,6 +242,8 @@ const fileInput = ref(null)
 const uploading = ref(false)
 const uploadFileName = ref('')
 const dragOver = ref(false)
+// 重新上传产生的暂存包 { tempId, fileName, size }：只有点「保存」才提交发布
+const pending = ref(null)
 const form = reactive({
   platform: '', version: '', downloadUrl: '', changelog: ''
 })
@@ -265,7 +267,10 @@ function validateVersion(v) {
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 
+const hasPackage = computed(() => !!form.downloadUrl || !!pending.value)
+
 const pkgFileName = computed(() => {
+  if (pending.value) return pending.value.fileName
   const url = form.downloadUrl || ''
   if (!url) return ''
   try {
@@ -276,7 +281,29 @@ const pkgFileName = computed(() => {
   }
 })
 
+const pkgPathText = computed(() => {
+  if (!pending.value) return form.downloadUrl
+  return form.downloadUrl
+    ? `暂存中 · 保存后将替换 ${form.downloadUrl}`
+    : '暂存中 · 保存后才生效'
+})
+
+// 丢弃未提交的暂存包。保存成功后会先把 pending 置空，
+// 这样 @closed 触发时不会再删掉已经发布的文件。
+function discardPending() {
+  const p = pending.value
+  pending.value = null
+  if (!p) return
+  discardVersionPackage(p.tempId).catch(() => {})
+}
+
+function onDialogClosed() {
+  discardPending()
+  resetForm()
+}
+
 function removePackage() {
+  discardPending() // 明确丢弃刚上传、尚未保存的包
   form.downloadUrl = ''
   uploadFileName.value = ''
 }
@@ -361,6 +388,7 @@ function resetForm() {
 }
 
 function openAdd() {
+  discardPending()
   resetForm()
   form.platform = platform.value
   addVisible.value = true
@@ -393,9 +421,18 @@ async function uploadFile(file, input) {
   uploading.value = true
   try {
     const res = await uploadVersionPackage(fd)
-    form.downloadUrl = res.data // 形如 /downloads/win-1.0.2.exe
-    uploadFileName.value = file.name
-    ElMessage.success('安装包已上传，下载地址已自动填充')
+    const data = res.data || {}
+    if (!data.tempId) throw new Error('上传结果缺少 tempId')
+    // 同一弹窗内重复上传：先丢弃上一份暂存，避免留下无人引用的文件
+    discardPending()
+    if (!addVisible.value && !editVisible.value) {
+      // 上传过程中用户已关闭弹窗，立即丢弃，避免暂存泄漏
+      discardVersionPackage(data.tempId).catch(() => {})
+      return
+    }
+    // 只记录暂存信息，不改 downloadUrl：保存前线上包保持原样
+    pending.value = { tempId: data.tempId, fileName: data.fileName || file.name, size: data.size }
+    ElMessage.success('安装包已暂存，点击「保存」后才会生效')
   } catch (e) {} finally {
     uploading.value = false
     dragOver.value = false
@@ -418,6 +455,7 @@ function onDrop(e) {
 }
 
 function openEdit(row) {
+  discardPending()
   editId.value = row.id
   form.platform = row.platform
   form.version = row.version
@@ -434,12 +472,15 @@ async function save() {
     platform: form.platform,
     version: form.version,
     downloadUrl: form.downloadUrl || null,
+    tempId: pending.value?.tempId || null,
     changelog: form.changelog || null
   }
   saving.value = true
   try {
     const res = await createVersion(payload)
     ElMessage.success(res.data || '新增成功')
+    // tempId 已被后端消费，清掉后 @closed 不会再去删除已发布的文件
+    pending.value = null
     addVisible.value = false
     await loadList()
   } catch (e) {} finally {
@@ -450,12 +491,14 @@ async function save() {
 async function saveEdit() {
   const payload = {
     downloadUrl: form.downloadUrl || null,
+    tempId: pending.value?.tempId || null,
     changelog: form.changelog || null
   }
   saving.value = true
   try {
     const res = await updateVersion(editId.value, payload)
     ElMessage.success(res.data || '保存成功')
+    pending.value = null
     editVisible.value = false
     await loadList()
   } catch (e) {} finally {
@@ -514,6 +557,7 @@ onMounted(loadList)
 .pkg-icon { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 8px; background: #EEF2FF; color: #2E5CE6; flex-shrink: 0; }
 .pkg-info { flex: 1; min-width: 0; }
 .pkg-name { font-size: 14px; font-weight: 600; color: #1F2329; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pkg-pending { display: inline-block; margin-left: 8px; padding: 1px 6px; border-radius: 3px; background: #FFFAEB; color: #B54708; font-size: 11px; font-weight: 500; vertical-align: 1px; }
 .pkg-path { font-size: 12px; color: #98A2B3; font-family: Consolas, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
 .pkg-ops { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .pkg-op { padding: 4px 8px; border-radius: 4px; font-size: 13px; color: #2E5CE6; cursor: pointer; background: none; border: none; transition: background .12s; white-space: nowrap; }

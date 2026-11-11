@@ -1,17 +1,21 @@
 package com.docauth.config;
 
 import com.docauth.interceptor.TokenInterceptor;
+import com.docauth.service.AppVersionService;
 import com.docauth.service.ConfigService;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.Resource;
 import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import org.springframework.web.servlet.resource.PathResourceResolver;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -37,8 +41,10 @@ public class WebMvcConfig implements WebMvcConfigurer {
     }
 
     /**
-     * 客户端版本安装包静态下载映射：/downloads/** 对应 file:{versionFileDir}/
-     * 文件由管理员上传/放置到该目录后，即可通过 /downloads/{platform}-{version}{ext} 下载。
+     * 客户端版本安装包静态下载映射：/downloads/** 对应 file:{versionFileDir}/。
+     * versionFileDir/tmp/ 是重新上传的暂存目录（未发布），必须在这里显式拒绝：
+     * 否则 /downloads/tmp/{uuid}__android__1.0.5.apk 会被匿名直接下载。
+     * 线上 nginx 为纯反代（无 alias 直读盘），因此这一层拦截是唯一且足够的防线。
      */
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
@@ -51,7 +57,22 @@ public class WebMvcConfig implements WebMvcConfigurer {
                     .warn("[WebMvcConfig] 版本安装包目录创建失败: {}", dir, e);
         }
         registry.addResourceHandler("/downloads/**")
-                .addResourceLocations("file:" + dir + "/");
+                .addResourceLocations("file:" + dir + "/")
+                .resourceChain(false)
+                .addResolver(new PathResourceResolver() {
+                    @Override
+                    protected Resource getResource(String resourcePath, Resource location) throws IOException {
+                        // 按路径段判断，兼容 ./tmp、..\tmp 等未经规范化的写法；
+                        // 已发布包名均为 PasswordManager-*，不含 tmp 段，不会被误拒。
+                        String normalized = resourcePath.replace('\\', '/');
+                        for (String segment : normalized.split("/")) {
+                            if (AppVersionService.STAGING_SUBDIR.equalsIgnoreCase(segment)) {
+                                return null;
+                            }
+                        }
+                        return super.getResource(resourcePath, location);
+                    }
+                });
     }
 
     @Override

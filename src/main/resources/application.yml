@@ -84,8 +84,12 @@ password:
 # 客户端版本安装包存储配置
 app:
   version:
-    # 安装包落盘目录（相对路径或绝对路径）；环境变量 VERSION_FILE_DIR 可覆盖（Docker 内设为 /app/versionFile）
+    # 已发布安装包落盘目录（相对路径或绝对路径）；环境变量 VERSION_FILE_DIR 可覆盖（Docker 内设为 /app/versionFile）
     file-dir: ${VERSION_FILE_DIR:./versionFile}
+    # 重新上传的暂存目录固定为 file-dir 下的 tmp/ 子目录（Docker 内 /app/versionFile/tmp），
+    # 由 WebMvcConfig 的资源解析器拒绝 /downloads/tmp/** 访问；与发布目录共用一个 bind mount。
+    # 暂存文件保留时长（小时）：用户直接关页面/断网时由定时任务兜底清理
+    staging-ttl-hours: ${VERSION_STAGING_TTL_HOURS:24}
     # 下载地址公网前缀；若 downloadUrl 存相对路径（如 /downloads/win-1.0.2.exe），
     # /config/version/check 返回时自动拼此前缀。留空则原样返回。
     public-base-url: ${VERSION_PUBLIC_BASE_URL:}

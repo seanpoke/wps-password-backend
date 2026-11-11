@@ -35,10 +35,15 @@ export function deleteVersion(id) {
   return request.delete(`/config/version/${id}`)
 }
 
-/** 上传版本安装包（admin）：返回可填入 downloadUrl 的相对路径 */
+/** 上传版本安装包（admin）：仅暂存，返回 { tempId, fileName, size }；保存版本时携带 tempId 才发布生效 */
 export function uploadVersionPackage(formData) {
   return request.post('/config/version/upload', formData, {
     // 让 axios 按 FormData 自动设置 multipart 边界
     headers: { 'Content-Type': 'multipart/form-data' }
   })
+}
+
+/** 丢弃暂存安装包（admin）：取消编辑 / 移除时调用，幂等 */
+export function discardVersionPackage(tempId) {
+  return request.delete(`/config/version/upload/${encodeURIComponent(tempId)}`)
 }

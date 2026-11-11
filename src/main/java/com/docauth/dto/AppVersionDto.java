@@ -22,6 +22,10 @@ public class AppVersionDto {
     @Schema(description = "下载地址", example = "https://example.com/setup.exe")
     private String downloadUrl;
 
+    @Schema(description = "重新上传的暂存文件ID：仅保存时提交发布；不传表示沿用 downloadUrl",
+            example = "3f8c1e2a-5b6d-4c7e-9a0b-1c2d3e4f5a6b")
+    private String tempId;
+
     @Schema(description = "更新说明", example = "修复若干已知问题")
     private String changelog;
 

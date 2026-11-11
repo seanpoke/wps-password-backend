@@ -5,6 +5,7 @@ import com.docauth.dto.AppVersionDto;
 import com.docauth.dto.VersionCheckResponse;
 import com.docauth.dto.VersionLatestVo;
 import com.docauth.dto.VersionPageVo;
+import com.docauth.dto.VersionUploadVo;
 import com.docauth.service.AppVersionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -90,18 +91,20 @@ public class VersionController {
     }
 
     /**
-     * 上传版本安装包（admin）：落盘到版本目录，返回可填入 downloadUrl 的相对路径 /downloads/{platform}-{version}{ext}
+     * 上传版本安装包（admin）：仅暂存到发布目录下的 tmp/ 子目录，
+     * 该路径被 WebMvcConfig 的资源解析器拒绝 /downloads/tmp/** 访问，未发布包不会外泄。
+     * 返回 tempId；必须随「新增/编辑版本」的保存请求提交才会发布生效。
      */
     @PostMapping("/upload")
-    @Operation(summary = "上传版本安装包",
-            description = "admin 上传安装包到版本目录，返回相对下载路径（如 /downloads/win-1.0.2.exe）")
-    public ApiResponse<String> upload(
+    @Operation(summary = "暂存版本安装包",
+            description = "上传后返回 tempId，保存版本时携带该 ID 才发布；取消编辑不会改变线上安装包")
+    public ApiResponse<VersionUploadVo> upload(
             @RequestParam String platform,
             @RequestParam String version,
             @RequestParam MultipartFile file) {
         assertAdmin();
         try {
-            return ApiResponse.success(appVersionService.storePackage(platform, version, file));
+            return ApiResponse.success(appVersionService.stagePackage(platform, version, file));
         } catch (RuntimeException e) {
             return ApiResponse.error(400, e.getMessage());
         } catch (Exception e) {
@@ -111,7 +114,25 @@ public class VersionController {
     }
 
     /**
-     * 新增版本记录（admin）
+     * 丢弃暂存安装包（admin）：取消编辑、移除待上传包时调用；已过期或被清理时幂等返回成功。
+     */
+    @DeleteMapping("/upload/{tempId}")
+    @Operation(summary = "丢弃暂存安装包", description = "取消编辑时清理未发布的暂存文件")
+    public ApiResponse<String> discard(@PathVariable String tempId) {
+        assertAdmin();
+        try {
+            appVersionService.discardStaged(tempId);
+            return ApiResponse.success("暂存安装包已丢弃");
+        } catch (RuntimeException e) {
+            return ApiResponse.error(400, e.getMessage());
+        } catch (Exception e) {
+            log.error("[version/upload/discard] 异常: {}", e.getMessage(), e);
+            return ApiResponse.error(500, "丢弃暂存安装包失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 新增版本记录（admin）：携带 tempId 时一并发布对应安装包
      */
     @PostMapping
     @Operation(summary = "新增版本", description = "在某个平台下新增一个版本记录")
