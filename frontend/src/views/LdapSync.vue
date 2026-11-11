@@ -49,9 +49,9 @@
             <el-form-item label="绑定密码">
               <el-input v-model="cfg.password" type="password" show-password placeholder="留空表示不修改" />
             </el-form-item>
-            <el-form-item label="subTree（每行一个）">
-              <el-input v-model="treesText" type="textarea" :rows="4" placeholder="ou=dept,dc=example,dc=com" />
-              <div class="hint">同步与组织树仅展示这些根；未配置则不同步、不展示任何部门。</div>
+            <el-form-item label="subTree">
+              <el-input v-model="treesText" type="textarea" :rows="4" placeholder="每行一个，如 ou=dept,dc=example,dc=com" />
+              <div class="hint">每行填写一个组织根 DN；同步与组织树仅展示这些根；未配置则不同步、不展示任何部门。</div>
             </el-form-item>
           </div>
         </el-form>
